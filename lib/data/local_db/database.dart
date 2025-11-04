@@ -23,7 +23,7 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   // --- 1. NAIKKAN VERSI SCHEMA DARI 2 KE 3 ---
-  int get schemaVersion => 4;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration {
@@ -61,6 +61,14 @@ class AppDatabase extends _$AppDatabase {
           // 2. Tambah 1 kolom baru ke tabel 'HikePhotos'
           await m.addColumn(hikePhotos, hikePhotos.waypointId);
         }
+        // ini adalah migrasi dari v4 ke v5
+        if (from == 4) {
+  await m.renameColumn(hikes, 'duration_minutes', hikes.durationSeconds);
+}
+// migrasi dari v5 ke v6
+if (from == 5) {
+  await m.addColumn(hikes, hikes.averagePaceMinPerKm);
+}
         // --- AKHIR LOGIKA BARU ---
       },
     );

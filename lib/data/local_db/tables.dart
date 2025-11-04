@@ -11,12 +11,13 @@ class Hikes extends Table {
   DateTimeColumn get hikeDate => dateTime()();
 
   // --- Kolom Statistik (Baru dari v3) ---
-  IntColumn get durationMinutes => integer().nullable()();
+  IntColumn get durationSeconds => integer().nullable()();
   RealColumn get totalDistanceKm => real().nullable()();
   RealColumn get totalElevationGainMeters => real().nullable()();
   RealColumn get totalElevationLossMeters => real().nullable()();
   RealColumn get averageSpeedKmh => real().nullable()();
   RealColumn get maxSpeedKmh => real().nullable()();
+  RealColumn get averagePaceMinPerKm => real().nullable()();
 
   // --- Kolom Cuaca (Baru dari v3) ---
   TextColumn get startWeatherCondition => text().nullable()();

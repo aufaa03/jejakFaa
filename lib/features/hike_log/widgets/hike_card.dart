@@ -2,13 +2,40 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jejak_faa_new/data/local_db/database.dart';
-// 1. IMPORT DAO KITA
 import 'package:jejak_faa_new/data/local_db/database_providers.dart';
-import 'package:jejak_faa_new/data/models/sync_status.dart'; // <-- 2. IMPORT ENUM
+import 'package:jejak_faa_new/data/models/sync_status.dart';
 import 'package:intl/intl.dart';
 
+// --- TAMBAHKAN FUNGSI HELPER DI SINI ---
+String _formatDuration(int? totalSeconds) {
+  if (totalSeconds == null) return '0d';
+  
+  final duration = Duration(seconds: totalSeconds);
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60);
+  final seconds = duration.inSeconds.remainder(60);
 
-// 3. GANTI DARI KODE ANDA KE VERSI DISMISSIBLE
+  final parts = <String>[];
+  if (hours > 0) {
+    parts.add('${hours}j');
+  }
+  if (minutes > 0) {
+    parts.add('${minutes}m');
+  }
+  // Hanya tampilkan detik jika durasi kurang dari 1 jam
+  if (hours == 0) {
+    parts.add('${seconds}d');
+  }
+  // Jika 0 detik, tampilkan 0d
+	if (parts.isEmpty && totalSeconds == 0) {
+    return '0d';
+  }
+
+  return parts.join(' ');
+}
+// --- AKHIR FUNGSI HELPER ---
+
+
 class HikeCard extends ConsumerWidget {
   final Hike hike;
   const HikeCard({super.key, required this.hike});
@@ -17,11 +44,9 @@ class HikeCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
 
-    // Format tanggal
     final dateText =
         '${hike.hikeDate.day}/${hike.hikeDate.month}/${hike.hikeDate.year}';
 
-    // 4. Tentukan status sinkronisasi untuk UI (MENGGUNAKAN ENUM)
     IconData syncIcon;
     Color syncColor;
     String syncTooltip;
@@ -38,24 +63,18 @@ class HikeCard extends ConsumerWidget {
         syncColor = Colors.blue.shade700;
         syncTooltip = 'Menunggu sinkronisasi';
         break;
-      default: // Harusnya tidak terjadi
+      default:
         syncIcon = Icons.cloud_off_outlined;
         syncColor = Colors.grey;
         syncTooltip = 'Status tidak diketahui';
     }
 
 
-    // 5. BUNGKUS CARD DENGAN 'DISMISSIBLE' (Geser-untuk-Hapus)
     return Dismissible(
-      // 6. Kunci unik untuk widget ini
       key: ValueKey(hike.id),
-
-      // 7. Arah geser (hanya dari kanan ke kiri)
       direction: DismissDirection.endToStart,
-
-      // 8. Tampilan background saat di-geser (Ikon Sampah)
       background: Container(
-        margin: const EdgeInsets.only(bottom: 12.0), // Samakan margin card
+        margin: const EdgeInsets.only(bottom: 12.0),
         decoration: BoxDecoration(
           color: Colors.red[700],
           borderRadius: BorderRadius.circular(16.0),
@@ -68,13 +87,8 @@ class HikeCard extends ConsumerWidget {
           size: 28,
         ),
       ),
-
-      // 9. AKSI SAAT DI-GESER PENUH (SOFT DELETE)
       onDismissed: (direction) {
-        // Ambil DAO dan panggil method 'softDeleteHike' (INI AKAN KITA BUAT DI 'hike_dao.dart')
         ref.read(hikeDaoProvider).softDeleteHike(hike.id);
-
-        // Tampilkan notifikasi
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('${hike.mountainName} ditandai untuk dihapus.'),
@@ -82,14 +96,11 @@ class HikeCard extends ConsumerWidget {
           ),
         );
       },
-
-      // 10. CARD ASLINYA
       child: InkWell(
         onTap: () {
-          // Navigasi ke halaman detail dengan mengirim ID lokal
           context.push('/home/hike_detail/${hike.id}');
         },
-        borderRadius: BorderRadius.circular(16.0), // Efek splash rounded
+        borderRadius: BorderRadius.circular(16.0),
         child: Card(
           margin: const EdgeInsets.only(bottom: 12.0),
           shape: RoundedRectangleBorder(
@@ -102,12 +113,10 @@ class HikeCard extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Baris Judul (Nama Gunung, Status, Tombol Edit)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Nama Gunung & Status
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -120,7 +129,6 @@ class HikeCard extends ConsumerWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
-                          // Indikator Status Sync (Badge)
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8.0,
@@ -149,7 +157,6 @@ class HikeCard extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    // Tombol Edit
                     IconButton(
                       icon: Icon(
                         Icons.edit_outlined,
@@ -160,7 +167,6 @@ class HikeCard extends ConsumerWidget {
                       constraints: const BoxConstraints(),
                       tooltip: 'Edit Jejak',
                       onPressed: () {
-                        // Buka halaman Form mode Edit
                         context.push('/home/edit_hike', extra: hike);
                       },
                     ),
@@ -168,7 +174,7 @@ class HikeCard extends ConsumerWidget {
                 ),
                 const SizedBox(height: 8),
 
-                // Baris Info (Tanggal & Durasi)
+                // --- BARIS INFO (TANGGAL & DURASI) ---
                 Row(
                   children: [
                     Icon(
@@ -179,7 +185,9 @@ class HikeCard extends ConsumerWidget {
                     const SizedBox(width: 8),
                     Text(dateText, style: theme.textTheme.bodyMedium),
                     const SizedBox(width: 16),
-                    if (hike.durationMinutes != null) ...[
+                    
+                    // --- PERBAIKAN TAMPILAN DURASI ---
+                    if (hike.durationSeconds != null) ...[
                       Icon(
                         Icons.timer_outlined,
                         size: 16,
@@ -187,14 +195,15 @@ class HikeCard extends ConsumerWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '${hike.durationMinutes} menit',
+                        _formatDuration(hike.durationSeconds), // <-- Gunakan helper
                         style: theme.textTheme.bodyMedium,
                       ),
                     ],
+                    // --- AKHIR PERBAIKAN ---
                   ],
                 ),
 
-                // Baris Info (Partner)
+                // ... (Sisa kode Anda untuk Partner & Notes tetap sama) ...
                 if (hike.partners != null && hike.partners!.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Row(
@@ -209,8 +218,6 @@ class HikeCard extends ConsumerWidget {
                     ],
                   ),
                 ],
-
-                // Catatan (ringkasan)
                 if (hike.notes != null && hike.notes!.isNotEmpty) ...[
                   const Divider(height: 24),
                   Text(
@@ -218,9 +225,9 @@ class HikeCard extends ConsumerWidget {
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: Colors.grey.shade800,
                     ),
-                    maxLines: 3, // Tampilkan maks 3 baris
+                    maxLines: 3,
                     overflow:
-                        TextOverflow.ellipsis, // Tambahkan '...' jika panjang
+                        TextOverflow.ellipsis,
                   ),
                 ],
               ],
@@ -231,4 +238,3 @@ class HikeCard extends ConsumerWidget {
     );
   }
 }
-

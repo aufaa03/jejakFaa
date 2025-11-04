@@ -16,7 +16,6 @@ import 'package:latlong2/latlong.dart';
 import 'package:jejak_faa_new/features/hike_log/providers/route_points_provider.dart';
 import 'package:jejak_faa_new/features/hike_log/providers/hike_waypoints_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-// --- 1. TAMBAHAN IMPORT UNTUK FORMAT ANGKA ---
 import 'package:intl/intl.dart';
 
 part 'hike_detail_page.g.dart';
@@ -27,31 +26,24 @@ Future<Hike?> hikeDetail(HikeDetailRef ref, int localHikeId) {
   return dao.getHikeById(localHikeId);
 }
 
-// --- 2. TAMBAHKAN PROVIDER BARU UNTUK FOTO WAYPOINT ---
-/// Provider ini akan mengambil DAFTAR SEMUA FOTO untuk sebuah pendakian,
-/// lalu mencari satu foto yang cocok dengan `waypointId` yang diberikan.
 @riverpod
-HikePhoto? waypointPhoto(WaypointPhotoRef ref, {
-  required int hikeId, 
-  required int waypointId
+HikePhoto? waypointPhoto(
+  WaypointPhotoRef ref, {
+  required int hikeId,
+  required int waypointId,
 }) {
-  // Kita tonton provider utama yang berisi SEMUA foto untuk pendakian ini
   final photosAsync = ref.watch(hikePhotosProvider(hikeId));
-  // Ambil datanya jika ada
   final photos = photosAsync.valueOrNull ?? [];
   try {
-    // Cari satu foto yang 'waypointId'-nya cocok
     return photos.firstWhere((p) => p.waypointId == waypointId);
   } catch (e) {
-    return null; // Kembalikan null jika tidak ada foto yang cocok
+    return null;
   }
 }
-// --- AKHIR TAMBAHAN PROVIDER ---
 
 
 class HikeDetailPage extends ConsumerStatefulWidget {
   final int localHikeId;
-
   const HikeDetailPage({super.key, required this.localHikeId});
 
   @override
@@ -59,71 +51,13 @@ class HikeDetailPage extends ConsumerStatefulWidget {
 }
 
 class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
-  // ... (Semua state Anda: _isEditing, _isSaving, _isUploading) ...
-  bool _isEditing = false;
-  bool _isSaving = false;
+  // Mode edit sudah dihapus, kita hanya butuh state untuk upload foto
   bool _isUploading = false;
 
-  // ... (Semua controller Anda) ...
-  late TextEditingController _mountainNameController;
-  late TextEditingController _durationController;
-  late TextEditingController _distanceController;
-  late TextEditingController _elevationController;
-  late TextEditingController _partnersController;
-  late TextEditingController _notesController;
-  DateTime? _selectedDate;
+  // --- SEMUA FUNGSI EDIT (initState, dispose, _loadFormData, _saveChanges) DIHAPUS ---
 
-  // ... (initState, dispose, _loadFormData, _pickDate tetap sama) ...
-  @override
-  void initState() {
-    super.initState();
-    _mountainNameController = TextEditingController();
-    _durationController = TextEditingController();
-    _distanceController = TextEditingController();
-    _elevationController = TextEditingController();
-    _partnersController = TextEditingController();
-    _notesController = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _mountainNameController.dispose();
-    _durationController.dispose();
-    _distanceController.dispose();
-    _elevationController.dispose();
-    _partnersController.dispose();
-    _notesController.dispose();
-    super.dispose();
-  }
-
-  void _loadFormData(Hike hike) {
-    _mountainNameController.text = hike.mountainName;
-    _selectedDate = hike.hikeDate;
-    _durationController.text = hike.durationMinutes?.toString() ?? '';
-    _distanceController.text = hike.totalDistanceKm?.toStringAsFixed(2) ?? '';
-    _elevationController.text = hike.totalElevationGainMeters?.toStringAsFixed(0) ?? '';
-    _partnersController.text = hike.partners ?? '';
-    _notesController.text = hike.notes ?? '';
-  }
-
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate ?? DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null && picked != _selectedDate) {
-      setState(() => _selectedDate = picked);
-    }
-  }
-
-
-  // --- 3. UPGRADE FUNGSI _pickImage (Konsisten dengan MapPage) ---
   Future<void> _pickImage() async {
     final imagePicker = ImagePicker();
-
-    // 1. Tampilkan dialog pilihan
     final ImageSource? source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (ctx) => Column(
@@ -142,14 +76,11 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
         ],
       ),
     );
-    if (source == null) return; // User membatalkan
-
-    // 2. Ambil gambar
+    if (source == null) return; 
+    
     final XFile? imageFile;
     try {
-      imageFile = await imagePicker.pickImage(
-        source: source, imageQuality: 80,
-      );
+      imageFile = await imagePicker.pickImage(source: source, imageQuality: 80);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -161,18 +92,16 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
     
     if (imageFile == null) return;
 
-    // 3. Upload dan Simpan (Logika lama Anda sudah benar)
     setState(() => _isUploading = true);
     try {
       final userId = ref.read(authStateProvider).value!.id;
       final photoUrl = await _uploadToStorage(imageFile, userId);
       
-      // Simpan sebagai foto "Umum" (waypointId tetap null)
       final photoEntry = HikePhotosCompanion(
         hikeId: d.Value(widget.localHikeId),
         photoUrl: d.Value(photoUrl),
         syncStatus: const d.Value(SyncStatus.pending),
-        waypointId: const d.Value(null), // <-- Eksplisit null
+        waypointId: const d.Value(null), 
       );
       await ref.read(hikePhotoDaoProvider).insertHikePhoto(photoEntry);
 
@@ -196,72 +125,23 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
       }
     }
   }
-  // --- AKHIR UPGRADE _pickImage ---
 
-  // ... (_uploadToStorage dan _saveChanges tetap sama) ...
   Future<String> _uploadToStorage(XFile imageFile, String userId) async {
     final file = File(imageFile.path);
     final fileExtension = imageFile.path.split('.').last.toLowerCase();
     final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
     final path = '$userId/${widget.localHikeId}/$fileName';
-    await Supabase.instance.client.storage.from('hike_photos').upload(path, file);
-    final publicUrl =
-        Supabase.instance.client.storage.from('hike_photos').getPublicUrl(path);
+    await Supabase.instance.client.storage
+        .from('hike_photos')
+        .upload(path, file);
+    final publicUrl = Supabase.instance.client.storage
+        .from('hike_photos')
+        .getPublicUrl(path);
     return publicUrl;
   }
   
-  Future<void> _saveChanges(Hike hike) async {
-    // ... (Logika _saveChanges Anda sudah benar, tidak perlu diubah) ...
-    if (_mountainNameController.text.isEmpty || _selectedDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nama gunung & Tanggal wajib diisi')),
-      );
-      return;
-    }
-    final int? duration = int.tryParse(_durationController.text);
-    final double? distance = double.tryParse(_distanceController.text);
-    final double? elevation = double.tryParse(_elevationController.text);
-    setState(() => _isSaving = true);
-    try {
-      final hikeEntry = HikesCompanion(
-        id: d.Value(widget.localHikeId),
-        userId: d.Value(hike.userId),
-        mountainName: d.Value(_mountainNameController.text),
-        hikeDate: d.Value(_selectedDate!),
-        durationMinutes: d.Value(duration),
-        totalDistanceKm: d.Value(distance ?? hike.totalDistanceKm),
-        totalElevationGainMeters: d.Value(elevation ?? hike.totalElevationGainMeters),
-        partners: d.Value(
-          _partnersController.text.isEmpty ? null : _partnersController.text,
-        ),
-        notes: d.Value(_notesController.text.isEmpty ? null : _notesController.text),
-        syncStatus: const d.Value(SyncStatus.pending_update),
-      );
-      await ref.read(hikeDaoProvider).updateHike(hikeEntry);
-      if (mounted) {
-        setState(() => _isEditing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Data jejak berhasil disimpan')),
-        );
-        ref.refresh(hikeDetailProvider(widget.localHikeId));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
-    }
-  }
-
-
   @override
   Widget build(BuildContext context) {
-    // ... (AppBar dan body setup tetap sama) ...
     final hikeDetailAsync = ref.watch(hikeDetailProvider(widget.localHikeId));
     final theme = Theme.of(context);
 
@@ -269,25 +149,18 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
       appBar: AppBar(
         title: const Text('Detail Jejak'),
         actions: [
-          if (!_isEditing)
-            hikeDetailAsync.whenData(
-              (hike) {
-                if (hike == null) return const SizedBox.shrink();
-                return IconButton(
-                  icon: const Icon(Icons.edit_outlined),
-                  tooltip: 'Edit Jejak Ini',
-                  onPressed: () {
-                    _loadFormData(hike);
-                    setState(() => _isEditing = true);
-                  },
-                );
+          // Navigasi ke Halaman Form
+          hikeDetailAsync.whenData((hike) {
+            if (hike == null) return const SizedBox.shrink();
+            return IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Edit Jejak Ini',
+              onPressed: () {
+                // Gunakan 'push' agar kembali ke halaman ini
+                context.push('/home/edit_hike', extra: hike);
               },
-            ).value ?? const SizedBox.shrink()
-          else
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () => setState(() => _isEditing = false),
-            ),
+            );
+          }).value ?? const SizedBox.shrink()
         ],
       ),
       body: hikeDetailAsync.when(
@@ -298,10 +171,6 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
             return const Center(child: Text('Data pendakian tidak ditemukan.'));
           }
 
-          if (_isEditing) {
-            return _buildEditMode(hike);
-          }
-          
           final dateText =
               '${hike.hikeDate.day}/${hike.hikeDate.month}/${hike.hikeDate.year}';
 
@@ -330,14 +199,18 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
                         'Tanggal',
                         dateText,
                       ),
-                      if (hike.durationMinutes != null) ...[
+                      
+                      // --- PERBAIKAN TAMPILAN DURASI ---
+                      if (hike.durationSeconds != null) ...[
                         const Divider(height: 16),
                         _buildInfoRow(
                           Icons.timer_outlined,
                           'Durasi',
-                          '${hike.durationMinutes} menit',
+                          _formatDuration(hike.durationSeconds!), 
                         ),
                       ],
+                      // --- AKHIR PERBAIKAN ---
+
                       if (hike.totalDistanceKm != null) ...[
                         const Divider(height: 16),
                         _buildInfoRow(
@@ -354,7 +227,36 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
                           '${hike.totalElevationGainMeters?.toStringAsFixed(0)} m',
                         ),
                       ],
-                      if (hike.partners != null && hike.partners!.isNotEmpty) ...[
+                      if (hike.totalElevationLossMeters != null && hike.totalElevationLossMeters! > 0) ...[
+                        const Divider(height: 16),
+                        _buildInfoRow(
+                          Icons.trending_down_outlined,
+                          'Turunan',
+                          '${hike.totalElevationLossMeters?.toStringAsFixed(0)} m',
+                        ),
+                      ],
+
+                      // --- PERBAIKAN TAMPILAN PACE ---
+                      if (hike.averagePaceMinPerKm != null && hike.averagePaceMinPerKm! > 0) ...[
+                        const Divider(height: 16),
+                        _buildInfoRow(
+                          Icons.speed_outlined,
+                          'Pace Rata-rata', // Label baru
+                          '${hike.averagePaceMinPerKm?.toStringAsFixed(2)} mnt/km', // Data baru
+                        ),
+                      ],
+                      // --- AKHIR PERBAIKAN ---
+
+                      if (hike.maxSpeedKmh != null && hike.maxSpeedKmh! > 0) ...[
+                        const Divider(height: 16),
+                        _buildInfoRow(
+                          Icons.rocket_launch_outlined,
+                          'Maksimal',
+                          '${hike.maxSpeedKmh?.toStringAsFixed(1)} km/j',
+                        ),
+                      ],
+                      if (hike.partners != null &&
+                          hike.partners!.isNotEmpty) ...[
                         const Divider(height: 16),
                         _buildInfoRow(Icons.people_outline, 'Partner', hike.partners!),
                       ],
@@ -364,11 +266,9 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
               ),
               const SizedBox(height: 24),
 
-              // --- 4. MODIFIKASI: _buildRouteMap sekarang butuh 'ref' ---
               Text('Peta Rute 🗺️', style: theme.textTheme.titleMedium),
               const SizedBox(height: 16),
-              _buildRouteMap(context, ref, widget.localHikeId), // <-- 'ref' dioper
-              // --- AKHIR MODIFIKASI ---
+              _buildRouteMap(context, ref, widget.localHikeId),
               
               const SizedBox(height: 24),
               if (hike.notes != null && hike.notes!.isNotEmpty) ...[
@@ -381,11 +281,9 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
                 const SizedBox(height: 24),
               ],
               
-              // --- 5. MODIFIKASI: _buildPhotoGallery sekarang butuh 'ref' ---
               Text('Galeri Jejak 📸', style: theme.textTheme.titleMedium),
               const SizedBox(height: 16),
-              _buildPhotoGallery(context, ref, widget.localHikeId), // <-- 'ref' dioper
-              // --- AKHIR MODIFIKASI ---
+              _buildPhotoGallery(context, ref, widget.localHikeId),
               
               const SizedBox(height: 16),
               SizedBox(
@@ -415,36 +313,8 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
     );
   }
 
-  // ... (_buildEditMode dan _buildInfoRow tetap sama) ...
-  Widget _buildEditMode(Hike hike) {
-    // ... (Tidak ada perubahan di sini)
-    final dateText =
-        '${_selectedDate?.day ?? hike.hikeDate.day}/${_selectedDate?.month ?? hike.hikeDate.month}/${_selectedDate?.year ?? hike.hikeDate.year}';
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField( controller: _mountainNameController, decoration: const InputDecoration( labelText: 'Nama Gunung/Lokasi', border: OutlineInputBorder(), prefixIcon: Icon(Icons.location_on), ), enabled: !_isSaving, ),
-          const SizedBox(height: 16),
-          InkWell( onTap: _isSaving ? null : _pickDate, child: Container( padding: const EdgeInsets.all(16), decoration: BoxDecoration( border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(8), ), child: Row( mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [ Text(dateText), Icon(Icons.calendar_month, color: Colors.grey.shade600), ], ), ), ),
-          const SizedBox(height: 16),
-          Row( children: [ Expanded( child: TextField( controller: _durationController, decoration: const InputDecoration( labelText: 'Durasi (menit)', border: OutlineInputBorder(), ), keyboardType: TextInputType.number, enabled: !_isSaving, ), ), const SizedBox(width: 12), Expanded( child: TextField( controller: _distanceController, decoration: const InputDecoration( labelText: 'Jarak (km)', border: OutlineInputBorder(), ), keyboardType: TextInputType.number, enabled: !_isSaving, ), ), ], ),
-          const SizedBox(height: 16),
-          TextField( controller: _elevationController, decoration: const InputDecoration( labelText: 'Tanjakan (meter)', border: OutlineInputBorder(), ), keyboardType: TextInputType.number, enabled: !_isSaving, ),
-          const SizedBox(height: 16),
-          TextField( controller: _partnersController, decoration: const InputDecoration( labelText: 'Partner (Opsional)', border: OutlineInputBorder(), ), enabled: !_isSaving, ),
-          const SizedBox(height: 16),
-          TextField( controller: _notesController, decoration: const InputDecoration( labelText: 'Catatan (Opsional)', border: OutlineInputBorder(), ), maxLines: 3, enabled: !_isSaving, ),
-          const SizedBox(height: 32),
-          SizedBox( width: double.infinity, child: FilledButton.icon( icon: _isSaving ? const SizedBox( width: 20, height: 20, child: CircularProgressIndicator( strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Colors.white), ), ) : const Icon(Icons.save), label: Text(_isSaving ? 'Menyimpan...' : 'Simpan Perubahan'), onPressed: _isSaving ? null : () => _saveChanges(hike), ), ),
-        ],
-      ),
-    );
-  }
-
+  // --- SEMUA FUNGSI HELPER DISPLAY DI BAWAH INI TETAP DISIMPAN ---
   Widget _buildInfoRow(IconData icon, String label, String value) {
-    // ... (Tidak ada perubahan di sini)
     return Row(
       children: [
         Icon(icon, size: 18, color: Colors.grey[700]),
@@ -456,38 +326,32 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
     );
   }
 
-
-  // --- 6. TAMBAHKAN FUNGSI HELPER BARU INI (Salin dari MapPage) ---
-  /// Helper untuk mendapatkan ikon berdasarkan kategori waypoint
   static IconData _getIconForCategory(String? category) {
     switch (category) {
-      case 'POS':
-        return Icons.signpost_outlined;
-      case 'SUMBER_AIR':
-        return Icons.water_drop_outlined;
-      case 'PUNCAK':
-        return Icons.flag_outlined;
-      case 'CAMP':
-        return Icons.local_fire_department_outlined;
-      default:
-        return Icons.location_pin;
+      case 'POS': return Icons.signpost_outlined;
+      case 'SUMBER_AIR': return Icons.water_drop_outlined;
+      case 'PUNCAK': return Icons.flag_outlined;
+      case 'CAMP': return Icons.cabin_sharp;
+      default: return Icons.location_pin;
     }
   }
 
-  // --- 7. TAMBAHKAN FUNGSI MODAL BARU INI ---
-  /// Menampilkan Bottom Sheet untuk detail waypoint
-  void _showWaypointDetails(BuildContext context, WidgetRef ref, HikeWaypoint waypoint) {
+  void _showWaypointDetails(
+    BuildContext context,
+    WidgetRef ref,
+    HikeWaypoint waypoint,
+  ) {
     final theme = Theme.of(context);
-    final numberFormat = NumberFormat.decimalPattern('id'); // Format angka
-    
+    final numberFormat = NumberFormat.decimalPattern('id'); 
+
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // Izinkan sheet jadi tinggi
+      isScrollControlled: true, 
+      backgroundColor: Colors.white, // Pastikan background putih
       builder: (ctx) {
-        return Consumer( // Kita butuh Consumer baru di sini untuk 'modalRef'
+        return Consumer(
           builder: (context, modalRef, child) {
             
-            // Tonton provider FOTO SPESIFIK untuk waypoint ini
             final photo = modalRef.watch(waypointPhotoProvider(
               hikeId: waypoint.hikeId, 
               waypointId: waypoint.id
@@ -500,7 +364,6 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // --- NAMA & KATEGORI ---
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -513,7 +376,7 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
                             Text(waypoint.name, style: theme.textTheme.headlineSmall),
                             if(waypoint.category != null)
                               Text(
-                                waypoint.category!, // Misal: "POS"
+                                waypoint.category!,
                                 style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
                               ),
                           ],
@@ -531,7 +394,6 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
                     Text(waypoint.description!, style: theme.textTheme.bodyLarge),
                   ],
 
-                  // --- FOTO (JIKA ADA) ---
                   if(photo != null) ...[
                     const SizedBox(height: 16),
                     ClipRRect(
@@ -545,7 +407,6 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
                     ),
                   ],
 
-                  // --- STATISTIK ---
                   const Divider(height: 24),
                   Text("Statistik", style: theme.textTheme.titleMedium),
                   const SizedBox(height: 12),
@@ -572,7 +433,7 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
                         ),
                     ],
                   ),
-                  const SizedBox(height: 20), // Spasi aman
+                  const SizedBox(height: 20),
                 ],
               ),
             );
@@ -581,11 +442,9 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
       },
     );
   }
-  // --- AKHIR FUNGSI MODAL ---
 
-
-  // --- 8. UPGRADE FUNGSI _buildRouteMap ---
   Widget _buildRouteMap(BuildContext context, WidgetRef ref, int hikeId) {
+    // ... (Fungsi ini 100% sudah benar) ...
     final routePointsAsync = ref.watch(routePointsProvider(hikeId));
     final waypointsAsync = ref.watch(hikeWaypointsProvider(hikeId));
 
@@ -596,7 +455,6 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
       ),
       data: (points) {
         if (points.isEmpty) {
-          // ... (Tampilan 'Rute tidak terekam' Anda sudah benar)
           return Container( height: 200, alignment: Alignment.center, decoration: BoxDecoration( color: Colors.grey[100], borderRadius: BorderRadius.circular(12.0), border: Border.all(color: Colors.grey[300]!), ), child: Text( 'Rute GPS tidak terekam untuk pendakian ini.', style: TextStyle(color: Colors.grey[600]), ), );
         }
 
@@ -605,7 +463,6 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
             .toList();
         final bounds = LatLngBounds.fromPoints(polylinePoints);
 
-        // --- PERUBAHAN: Modifikasi Marker ---
         final List<Marker> markers = waypointsAsync.maybeWhen(
           data: (waypoints) => waypoints
               .map(
@@ -614,11 +471,9 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
                   height: 40.0,
                   point: LatLng(wp.latitude, wp.longitude),
                   child: IconButton(
-                    // Gunakan ikon kategori baru
                     icon: Icon(_getIconForCategory(wp.category),
                         color: Colors.purple.shade700, size: 35),
                     tooltip: wp.name,
-                    // Panggil modal baru, bukan SnackBar
                     onPressed: () {
                       _showWaypointDetails(context, ref, wp);
                     },
@@ -628,7 +483,6 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
               .toList(),
           orElse: () => [],
         );
-        // --- AKHIR PERUBAHAN ---
 
         return ClipRRect(
           borderRadius: BorderRadius.circular(12.0),
@@ -656,7 +510,7 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
                     ),
                   ],
                 ),
-                MarkerLayer(markers: markers), // Tampilkan marker yang sudah di-upgrade
+                MarkerLayer(markers: markers),
               ],
             ),
           ),
@@ -664,11 +518,9 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
       },
     );
   }
-  // --- AKHIR UPGRADE _buildRouteMap ---
-
-
-  // --- 9. UPGRADE FUNGSI _buildPhotoGallery ---
+  
   Widget _buildPhotoGallery(BuildContext context, WidgetRef ref, int hikeId) {
+    // ... (Fungsi ini 100% sudah benar) ...
     final photosAsync = ref.watch(hikePhotosProvider(hikeId));
     return photosAsync.when(
       loading: () =>
@@ -678,12 +530,9 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
       ),
       data: (photos) {
         
-        // --- PERUBAHAN: Filter foto waypoint ---
-        // Hanya ambil foto "Umum" (yang waypointId-nya null)
         final generalPhotos = photos.where((p) => p.waypointId == null).toList();
-        // --- AKHIR PERUBAHAN ---
 
-        if (generalPhotos.isEmpty) { // <-- Gunakan list baru
+        if (generalPhotos.isEmpty) { 
           return Center(
             child: Text('Belum ada foto.', style: TextStyle(color: Colors.grey[600])),
           );
@@ -697,12 +546,11 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
             mainAxisSpacing: 8,
             childAspectRatio: 1.0,
           ),
-          itemCount: generalPhotos.length, // <-- Gunakan panjang list baru
+          itemCount: generalPhotos.length, 
           itemBuilder: (context, index) {
-            final photo = generalPhotos[index]; // <-- Gunakan list baru
+            final photo = generalPhotos[index]; 
             final heroTag = 'hike-photo-${photo.id}';
 
-            // Sisa kode (GestureDetector, Hero, Image.network) sudah benar
             return GestureDetector(
               onTap: () {
                 Navigator.of(context).push(
@@ -747,23 +595,46 @@ class _HikeDetailPageState extends ConsumerState<HikeDetailPage> {
       },
     );
   }
-  // --- AKHIR UPGRADE _buildPhotoGallery ---
-}
-Widget _buildStatColumn(BuildContext context, String value, String label) {
-  return Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Text(
-        value,
-        style: Theme.of(
-          context,
-        ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(height: 4),
-      Text(
-        label,
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
-    ],
-  );
+  
+  Widget _buildStatColumn(BuildContext context, String value, String label) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          value,
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+
+  String _formatDuration(int totalSeconds) {
+    final duration = Duration(seconds: totalSeconds);
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+
+    final parts = <String>[];
+    if (hours > 0) {
+      parts.add('${hours}j');
+    }
+    if (minutes > 0) {
+      parts.add('${minutes}m');
+    }
+    if (hours == 0) { // Hanya tampilkan detik jika < 1 jam
+      parts.add('${seconds}d');
+    }
+  	if (parts.isEmpty && totalSeconds == 0) {
+      return '0d';
+    }
+
+    return parts.join(' ');
+  }
 }

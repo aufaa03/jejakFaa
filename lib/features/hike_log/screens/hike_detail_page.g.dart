@@ -147,28 +147,16 @@ class _HikeDetailProviderElement extends AutoDisposeFutureProviderElement<Hike?>
 
 String _$waypointPhotoHash() => r'd6aca8e936ec5398bdf8c1db3654a20603b53874';
 
-/// Provider ini akan mengambil DAFTAR SEMUA FOTO untuk sebuah pendakian,
-/// lalu mencari satu foto yang cocok dengan `waypointId` yang diberikan.
-///
-/// Copied from [waypointPhoto].
+/// See also [waypointPhoto].
 @ProviderFor(waypointPhoto)
 const waypointPhotoProvider = WaypointPhotoFamily();
 
-/// Provider ini akan mengambil DAFTAR SEMUA FOTO untuk sebuah pendakian,
-/// lalu mencari satu foto yang cocok dengan `waypointId` yang diberikan.
-///
-/// Copied from [waypointPhoto].
+/// See also [waypointPhoto].
 class WaypointPhotoFamily extends Family<HikePhoto?> {
-  /// Provider ini akan mengambil DAFTAR SEMUA FOTO untuk sebuah pendakian,
-  /// lalu mencari satu foto yang cocok dengan `waypointId` yang diberikan.
-  ///
-  /// Copied from [waypointPhoto].
+  /// See also [waypointPhoto].
   const WaypointPhotoFamily();
 
-  /// Provider ini akan mengambil DAFTAR SEMUA FOTO untuk sebuah pendakian,
-  /// lalu mencari satu foto yang cocok dengan `waypointId` yang diberikan.
-  ///
-  /// Copied from [waypointPhoto].
+  /// See also [waypointPhoto].
   WaypointPhotoProvider call({required int hikeId, required int waypointId}) {
     return WaypointPhotoProvider(hikeId: hikeId, waypointId: waypointId);
   }
@@ -195,15 +183,9 @@ class WaypointPhotoFamily extends Family<HikePhoto?> {
   String? get name => r'waypointPhotoProvider';
 }
 
-/// Provider ini akan mengambil DAFTAR SEMUA FOTO untuk sebuah pendakian,
-/// lalu mencari satu foto yang cocok dengan `waypointId` yang diberikan.
-///
-/// Copied from [waypointPhoto].
+/// See also [waypointPhoto].
 class WaypointPhotoProvider extends AutoDisposeProvider<HikePhoto?> {
-  /// Provider ini akan mengambil DAFTAR SEMUA FOTO untuk sebuah pendakian,
-  /// lalu mencari satu foto yang cocok dengan `waypointId` yang diberikan.
-  ///
-  /// Copied from [waypointPhoto].
+  /// See also [waypointPhoto].
   WaypointPhotoProvider({required int hikeId, required int waypointId})
     : this._internal(
         (ref) => waypointPhoto(

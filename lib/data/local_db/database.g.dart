@@ -63,12 +63,12 @@ class $HikesTable extends Hikes with TableInfo<$HikesTable, Hike> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _durationMinutesMeta = const VerificationMeta(
-    'durationMinutes',
+  static const VerificationMeta _durationSecondsMeta = const VerificationMeta(
+    'durationSeconds',
   );
   @override
-  late final GeneratedColumn<int> durationMinutes = GeneratedColumn<int>(
-    'duration_minutes',
+  late final GeneratedColumn<int> durationSeconds = GeneratedColumn<int>(
+    'duration_seconds',
     aliasedName,
     true,
     type: DriftSqlType.int,
@@ -129,6 +129,17 @@ class $HikesTable extends Hikes with TableInfo<$HikesTable, Hike> {
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _averagePaceMinPerKmMeta =
+      const VerificationMeta('averagePaceMinPerKm');
+  @override
+  late final GeneratedColumn<double> averagePaceMinPerKm =
+      GeneratedColumn<double>(
+        'average_pace_min_per_km',
+        aliasedName,
+        true,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _startWeatherConditionMeta =
       const VerificationMeta('startWeatherCondition');
   @override
@@ -203,12 +214,13 @@ class $HikesTable extends Hikes with TableInfo<$HikesTable, Hike> {
     cloudId,
     mountainName,
     hikeDate,
-    durationMinutes,
+    durationSeconds,
     totalDistanceKm,
     totalElevationGainMeters,
     totalElevationLossMeters,
     averageSpeedKmh,
     maxSpeedKmh,
+    averagePaceMinPerKm,
     startWeatherCondition,
     startTemperature,
     partners,
@@ -264,12 +276,12 @@ class $HikesTable extends Hikes with TableInfo<$HikesTable, Hike> {
     } else if (isInserting) {
       context.missing(_hikeDateMeta);
     }
-    if (data.containsKey('duration_minutes')) {
+    if (data.containsKey('duration_seconds')) {
       context.handle(
-        _durationMinutesMeta,
-        durationMinutes.isAcceptableOrUnknown(
-          data['duration_minutes']!,
-          _durationMinutesMeta,
+        _durationSecondsMeta,
+        durationSeconds.isAcceptableOrUnknown(
+          data['duration_seconds']!,
+          _durationSecondsMeta,
         ),
       );
     }
@@ -315,6 +327,15 @@ class $HikesTable extends Hikes with TableInfo<$HikesTable, Hike> {
         maxSpeedKmh.isAcceptableOrUnknown(
           data['max_speed_kmh']!,
           _maxSpeedKmhMeta,
+        ),
+      );
+    }
+    if (data.containsKey('average_pace_min_per_km')) {
+      context.handle(
+        _averagePaceMinPerKmMeta,
+        averagePaceMinPerKm.isAcceptableOrUnknown(
+          data['average_pace_min_per_km']!,
+          _averagePaceMinPerKmMeta,
         ),
       );
     }
@@ -383,9 +404,9 @@ class $HikesTable extends Hikes with TableInfo<$HikesTable, Hike> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}hike_date'],
       )!,
-      durationMinutes: attachedDatabase.typeMapping.read(
+      durationSeconds: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
-        data['${effectivePrefix}duration_minutes'],
+        data['${effectivePrefix}duration_seconds'],
       ),
       totalDistanceKm: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
@@ -406,6 +427,10 @@ class $HikesTable extends Hikes with TableInfo<$HikesTable, Hike> {
       maxSpeedKmh: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}max_speed_kmh'],
+      ),
+      averagePaceMinPerKm: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}average_pace_min_per_km'],
       ),
       startWeatherCondition: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -451,12 +476,13 @@ class Hike extends DataClass implements Insertable<Hike> {
   final String? cloudId;
   final String mountainName;
   final DateTime hikeDate;
-  final int? durationMinutes;
+  final int? durationSeconds;
   final double? totalDistanceKm;
   final double? totalElevationGainMeters;
   final double? totalElevationLossMeters;
   final double? averageSpeedKmh;
   final double? maxSpeedKmh;
+  final double? averagePaceMinPerKm;
   final String? startWeatherCondition;
   final double? startTemperature;
   final String? partners;
@@ -469,12 +495,13 @@ class Hike extends DataClass implements Insertable<Hike> {
     this.cloudId,
     required this.mountainName,
     required this.hikeDate,
-    this.durationMinutes,
+    this.durationSeconds,
     this.totalDistanceKm,
     this.totalElevationGainMeters,
     this.totalElevationLossMeters,
     this.averageSpeedKmh,
     this.maxSpeedKmh,
+    this.averagePaceMinPerKm,
     this.startWeatherCondition,
     this.startTemperature,
     this.partners,
@@ -492,8 +519,8 @@ class Hike extends DataClass implements Insertable<Hike> {
     }
     map['mountain_name'] = Variable<String>(mountainName);
     map['hike_date'] = Variable<DateTime>(hikeDate);
-    if (!nullToAbsent || durationMinutes != null) {
-      map['duration_minutes'] = Variable<int>(durationMinutes);
+    if (!nullToAbsent || durationSeconds != null) {
+      map['duration_seconds'] = Variable<int>(durationSeconds);
     }
     if (!nullToAbsent || totalDistanceKm != null) {
       map['total_distance_km'] = Variable<double>(totalDistanceKm);
@@ -513,6 +540,9 @@ class Hike extends DataClass implements Insertable<Hike> {
     }
     if (!nullToAbsent || maxSpeedKmh != null) {
       map['max_speed_kmh'] = Variable<double>(maxSpeedKmh);
+    }
+    if (!nullToAbsent || averagePaceMinPerKm != null) {
+      map['average_pace_min_per_km'] = Variable<double>(averagePaceMinPerKm);
     }
     if (!nullToAbsent || startWeatherCondition != null) {
       map['start_weather_condition'] = Variable<String>(startWeatherCondition);
@@ -544,9 +574,9 @@ class Hike extends DataClass implements Insertable<Hike> {
           : Value(cloudId),
       mountainName: Value(mountainName),
       hikeDate: Value(hikeDate),
-      durationMinutes: durationMinutes == null && nullToAbsent
+      durationSeconds: durationSeconds == null && nullToAbsent
           ? const Value.absent()
-          : Value(durationMinutes),
+          : Value(durationSeconds),
       totalDistanceKm: totalDistanceKm == null && nullToAbsent
           ? const Value.absent()
           : Value(totalDistanceKm),
@@ -562,6 +592,9 @@ class Hike extends DataClass implements Insertable<Hike> {
       maxSpeedKmh: maxSpeedKmh == null && nullToAbsent
           ? const Value.absent()
           : Value(maxSpeedKmh),
+      averagePaceMinPerKm: averagePaceMinPerKm == null && nullToAbsent
+          ? const Value.absent()
+          : Value(averagePaceMinPerKm),
       startWeatherCondition: startWeatherCondition == null && nullToAbsent
           ? const Value.absent()
           : Value(startWeatherCondition),
@@ -590,7 +623,7 @@ class Hike extends DataClass implements Insertable<Hike> {
       cloudId: serializer.fromJson<String?>(json['cloudId']),
       mountainName: serializer.fromJson<String>(json['mountainName']),
       hikeDate: serializer.fromJson<DateTime>(json['hikeDate']),
-      durationMinutes: serializer.fromJson<int?>(json['durationMinutes']),
+      durationSeconds: serializer.fromJson<int?>(json['durationSeconds']),
       totalDistanceKm: serializer.fromJson<double?>(json['totalDistanceKm']),
       totalElevationGainMeters: serializer.fromJson<double?>(
         json['totalElevationGainMeters'],
@@ -600,6 +633,9 @@ class Hike extends DataClass implements Insertable<Hike> {
       ),
       averageSpeedKmh: serializer.fromJson<double?>(json['averageSpeedKmh']),
       maxSpeedKmh: serializer.fromJson<double?>(json['maxSpeedKmh']),
+      averagePaceMinPerKm: serializer.fromJson<double?>(
+        json['averagePaceMinPerKm'],
+      ),
       startWeatherCondition: serializer.fromJson<String?>(
         json['startWeatherCondition'],
       ),
@@ -619,7 +655,7 @@ class Hike extends DataClass implements Insertable<Hike> {
       'cloudId': serializer.toJson<String?>(cloudId),
       'mountainName': serializer.toJson<String>(mountainName),
       'hikeDate': serializer.toJson<DateTime>(hikeDate),
-      'durationMinutes': serializer.toJson<int?>(durationMinutes),
+      'durationSeconds': serializer.toJson<int?>(durationSeconds),
       'totalDistanceKm': serializer.toJson<double?>(totalDistanceKm),
       'totalElevationGainMeters': serializer.toJson<double?>(
         totalElevationGainMeters,
@@ -629,6 +665,7 @@ class Hike extends DataClass implements Insertable<Hike> {
       ),
       'averageSpeedKmh': serializer.toJson<double?>(averageSpeedKmh),
       'maxSpeedKmh': serializer.toJson<double?>(maxSpeedKmh),
+      'averagePaceMinPerKm': serializer.toJson<double?>(averagePaceMinPerKm),
       'startWeatherCondition': serializer.toJson<String?>(
         startWeatherCondition,
       ),
@@ -646,12 +683,13 @@ class Hike extends DataClass implements Insertable<Hike> {
     Value<String?> cloudId = const Value.absent(),
     String? mountainName,
     DateTime? hikeDate,
-    Value<int?> durationMinutes = const Value.absent(),
+    Value<int?> durationSeconds = const Value.absent(),
     Value<double?> totalDistanceKm = const Value.absent(),
     Value<double?> totalElevationGainMeters = const Value.absent(),
     Value<double?> totalElevationLossMeters = const Value.absent(),
     Value<double?> averageSpeedKmh = const Value.absent(),
     Value<double?> maxSpeedKmh = const Value.absent(),
+    Value<double?> averagePaceMinPerKm = const Value.absent(),
     Value<String?> startWeatherCondition = const Value.absent(),
     Value<double?> startTemperature = const Value.absent(),
     Value<String?> partners = const Value.absent(),
@@ -664,9 +702,9 @@ class Hike extends DataClass implements Insertable<Hike> {
     cloudId: cloudId.present ? cloudId.value : this.cloudId,
     mountainName: mountainName ?? this.mountainName,
     hikeDate: hikeDate ?? this.hikeDate,
-    durationMinutes: durationMinutes.present
-        ? durationMinutes.value
-        : this.durationMinutes,
+    durationSeconds: durationSeconds.present
+        ? durationSeconds.value
+        : this.durationSeconds,
     totalDistanceKm: totalDistanceKm.present
         ? totalDistanceKm.value
         : this.totalDistanceKm,
@@ -680,6 +718,9 @@ class Hike extends DataClass implements Insertable<Hike> {
         ? averageSpeedKmh.value
         : this.averageSpeedKmh,
     maxSpeedKmh: maxSpeedKmh.present ? maxSpeedKmh.value : this.maxSpeedKmh,
+    averagePaceMinPerKm: averagePaceMinPerKm.present
+        ? averagePaceMinPerKm.value
+        : this.averagePaceMinPerKm,
     startWeatherCondition: startWeatherCondition.present
         ? startWeatherCondition.value
         : this.startWeatherCondition,
@@ -700,9 +741,9 @@ class Hike extends DataClass implements Insertable<Hike> {
           ? data.mountainName.value
           : this.mountainName,
       hikeDate: data.hikeDate.present ? data.hikeDate.value : this.hikeDate,
-      durationMinutes: data.durationMinutes.present
-          ? data.durationMinutes.value
-          : this.durationMinutes,
+      durationSeconds: data.durationSeconds.present
+          ? data.durationSeconds.value
+          : this.durationSeconds,
       totalDistanceKm: data.totalDistanceKm.present
           ? data.totalDistanceKm.value
           : this.totalDistanceKm,
@@ -718,6 +759,9 @@ class Hike extends DataClass implements Insertable<Hike> {
       maxSpeedKmh: data.maxSpeedKmh.present
           ? data.maxSpeedKmh.value
           : this.maxSpeedKmh,
+      averagePaceMinPerKm: data.averagePaceMinPerKm.present
+          ? data.averagePaceMinPerKm.value
+          : this.averagePaceMinPerKm,
       startWeatherCondition: data.startWeatherCondition.present
           ? data.startWeatherCondition.value
           : this.startWeatherCondition,
@@ -741,12 +785,13 @@ class Hike extends DataClass implements Insertable<Hike> {
           ..write('cloudId: $cloudId, ')
           ..write('mountainName: $mountainName, ')
           ..write('hikeDate: $hikeDate, ')
-          ..write('durationMinutes: $durationMinutes, ')
+          ..write('durationSeconds: $durationSeconds, ')
           ..write('totalDistanceKm: $totalDistanceKm, ')
           ..write('totalElevationGainMeters: $totalElevationGainMeters, ')
           ..write('totalElevationLossMeters: $totalElevationLossMeters, ')
           ..write('averageSpeedKmh: $averageSpeedKmh, ')
           ..write('maxSpeedKmh: $maxSpeedKmh, ')
+          ..write('averagePaceMinPerKm: $averagePaceMinPerKm, ')
           ..write('startWeatherCondition: $startWeatherCondition, ')
           ..write('startTemperature: $startTemperature, ')
           ..write('partners: $partners, ')
@@ -764,12 +809,13 @@ class Hike extends DataClass implements Insertable<Hike> {
     cloudId,
     mountainName,
     hikeDate,
-    durationMinutes,
+    durationSeconds,
     totalDistanceKm,
     totalElevationGainMeters,
     totalElevationLossMeters,
     averageSpeedKmh,
     maxSpeedKmh,
+    averagePaceMinPerKm,
     startWeatherCondition,
     startTemperature,
     partners,
@@ -786,12 +832,13 @@ class Hike extends DataClass implements Insertable<Hike> {
           other.cloudId == this.cloudId &&
           other.mountainName == this.mountainName &&
           other.hikeDate == this.hikeDate &&
-          other.durationMinutes == this.durationMinutes &&
+          other.durationSeconds == this.durationSeconds &&
           other.totalDistanceKm == this.totalDistanceKm &&
           other.totalElevationGainMeters == this.totalElevationGainMeters &&
           other.totalElevationLossMeters == this.totalElevationLossMeters &&
           other.averageSpeedKmh == this.averageSpeedKmh &&
           other.maxSpeedKmh == this.maxSpeedKmh &&
+          other.averagePaceMinPerKm == this.averagePaceMinPerKm &&
           other.startWeatherCondition == this.startWeatherCondition &&
           other.startTemperature == this.startTemperature &&
           other.partners == this.partners &&
@@ -806,12 +853,13 @@ class HikesCompanion extends UpdateCompanion<Hike> {
   final Value<String?> cloudId;
   final Value<String> mountainName;
   final Value<DateTime> hikeDate;
-  final Value<int?> durationMinutes;
+  final Value<int?> durationSeconds;
   final Value<double?> totalDistanceKm;
   final Value<double?> totalElevationGainMeters;
   final Value<double?> totalElevationLossMeters;
   final Value<double?> averageSpeedKmh;
   final Value<double?> maxSpeedKmh;
+  final Value<double?> averagePaceMinPerKm;
   final Value<String?> startWeatherCondition;
   final Value<double?> startTemperature;
   final Value<String?> partners;
@@ -824,12 +872,13 @@ class HikesCompanion extends UpdateCompanion<Hike> {
     this.cloudId = const Value.absent(),
     this.mountainName = const Value.absent(),
     this.hikeDate = const Value.absent(),
-    this.durationMinutes = const Value.absent(),
+    this.durationSeconds = const Value.absent(),
     this.totalDistanceKm = const Value.absent(),
     this.totalElevationGainMeters = const Value.absent(),
     this.totalElevationLossMeters = const Value.absent(),
     this.averageSpeedKmh = const Value.absent(),
     this.maxSpeedKmh = const Value.absent(),
+    this.averagePaceMinPerKm = const Value.absent(),
     this.startWeatherCondition = const Value.absent(),
     this.startTemperature = const Value.absent(),
     this.partners = const Value.absent(),
@@ -843,12 +892,13 @@ class HikesCompanion extends UpdateCompanion<Hike> {
     this.cloudId = const Value.absent(),
     required String mountainName,
     required DateTime hikeDate,
-    this.durationMinutes = const Value.absent(),
+    this.durationSeconds = const Value.absent(),
     this.totalDistanceKm = const Value.absent(),
     this.totalElevationGainMeters = const Value.absent(),
     this.totalElevationLossMeters = const Value.absent(),
     this.averageSpeedKmh = const Value.absent(),
     this.maxSpeedKmh = const Value.absent(),
+    this.averagePaceMinPerKm = const Value.absent(),
     this.startWeatherCondition = const Value.absent(),
     this.startTemperature = const Value.absent(),
     this.partners = const Value.absent(),
@@ -864,12 +914,13 @@ class HikesCompanion extends UpdateCompanion<Hike> {
     Expression<String>? cloudId,
     Expression<String>? mountainName,
     Expression<DateTime>? hikeDate,
-    Expression<int>? durationMinutes,
+    Expression<int>? durationSeconds,
     Expression<double>? totalDistanceKm,
     Expression<double>? totalElevationGainMeters,
     Expression<double>? totalElevationLossMeters,
     Expression<double>? averageSpeedKmh,
     Expression<double>? maxSpeedKmh,
+    Expression<double>? averagePaceMinPerKm,
     Expression<String>? startWeatherCondition,
     Expression<double>? startTemperature,
     Expression<String>? partners,
@@ -883,7 +934,7 @@ class HikesCompanion extends UpdateCompanion<Hike> {
       if (cloudId != null) 'cloud_id': cloudId,
       if (mountainName != null) 'mountain_name': mountainName,
       if (hikeDate != null) 'hike_date': hikeDate,
-      if (durationMinutes != null) 'duration_minutes': durationMinutes,
+      if (durationSeconds != null) 'duration_seconds': durationSeconds,
       if (totalDistanceKm != null) 'total_distance_km': totalDistanceKm,
       if (totalElevationGainMeters != null)
         'total_elevation_gain_meters': totalElevationGainMeters,
@@ -891,6 +942,8 @@ class HikesCompanion extends UpdateCompanion<Hike> {
         'total_elevation_loss_meters': totalElevationLossMeters,
       if (averageSpeedKmh != null) 'average_speed_kmh': averageSpeedKmh,
       if (maxSpeedKmh != null) 'max_speed_kmh': maxSpeedKmh,
+      if (averagePaceMinPerKm != null)
+        'average_pace_min_per_km': averagePaceMinPerKm,
       if (startWeatherCondition != null)
         'start_weather_condition': startWeatherCondition,
       if (startTemperature != null) 'start_temperature': startTemperature,
@@ -907,12 +960,13 @@ class HikesCompanion extends UpdateCompanion<Hike> {
     Value<String?>? cloudId,
     Value<String>? mountainName,
     Value<DateTime>? hikeDate,
-    Value<int?>? durationMinutes,
+    Value<int?>? durationSeconds,
     Value<double?>? totalDistanceKm,
     Value<double?>? totalElevationGainMeters,
     Value<double?>? totalElevationLossMeters,
     Value<double?>? averageSpeedKmh,
     Value<double?>? maxSpeedKmh,
+    Value<double?>? averagePaceMinPerKm,
     Value<String?>? startWeatherCondition,
     Value<double?>? startTemperature,
     Value<String?>? partners,
@@ -926,7 +980,7 @@ class HikesCompanion extends UpdateCompanion<Hike> {
       cloudId: cloudId ?? this.cloudId,
       mountainName: mountainName ?? this.mountainName,
       hikeDate: hikeDate ?? this.hikeDate,
-      durationMinutes: durationMinutes ?? this.durationMinutes,
+      durationSeconds: durationSeconds ?? this.durationSeconds,
       totalDistanceKm: totalDistanceKm ?? this.totalDistanceKm,
       totalElevationGainMeters:
           totalElevationGainMeters ?? this.totalElevationGainMeters,
@@ -934,6 +988,7 @@ class HikesCompanion extends UpdateCompanion<Hike> {
           totalElevationLossMeters ?? this.totalElevationLossMeters,
       averageSpeedKmh: averageSpeedKmh ?? this.averageSpeedKmh,
       maxSpeedKmh: maxSpeedKmh ?? this.maxSpeedKmh,
+      averagePaceMinPerKm: averagePaceMinPerKm ?? this.averagePaceMinPerKm,
       startWeatherCondition:
           startWeatherCondition ?? this.startWeatherCondition,
       startTemperature: startTemperature ?? this.startTemperature,
@@ -962,8 +1017,8 @@ class HikesCompanion extends UpdateCompanion<Hike> {
     if (hikeDate.present) {
       map['hike_date'] = Variable<DateTime>(hikeDate.value);
     }
-    if (durationMinutes.present) {
-      map['duration_minutes'] = Variable<int>(durationMinutes.value);
+    if (durationSeconds.present) {
+      map['duration_seconds'] = Variable<int>(durationSeconds.value);
     }
     if (totalDistanceKm.present) {
       map['total_distance_km'] = Variable<double>(totalDistanceKm.value);
@@ -983,6 +1038,11 @@ class HikesCompanion extends UpdateCompanion<Hike> {
     }
     if (maxSpeedKmh.present) {
       map['max_speed_kmh'] = Variable<double>(maxSpeedKmh.value);
+    }
+    if (averagePaceMinPerKm.present) {
+      map['average_pace_min_per_km'] = Variable<double>(
+        averagePaceMinPerKm.value,
+      );
     }
     if (startWeatherCondition.present) {
       map['start_weather_condition'] = Variable<String>(
@@ -1017,12 +1077,13 @@ class HikesCompanion extends UpdateCompanion<Hike> {
           ..write('cloudId: $cloudId, ')
           ..write('mountainName: $mountainName, ')
           ..write('hikeDate: $hikeDate, ')
-          ..write('durationMinutes: $durationMinutes, ')
+          ..write('durationSeconds: $durationSeconds, ')
           ..write('totalDistanceKm: $totalDistanceKm, ')
           ..write('totalElevationGainMeters: $totalElevationGainMeters, ')
           ..write('totalElevationLossMeters: $totalElevationLossMeters, ')
           ..write('averageSpeedKmh: $averageSpeedKmh, ')
           ..write('maxSpeedKmh: $maxSpeedKmh, ')
+          ..write('averagePaceMinPerKm: $averagePaceMinPerKm, ')
           ..write('startWeatherCondition: $startWeatherCondition, ')
           ..write('startTemperature: $startTemperature, ')
           ..write('partners: $partners, ')
@@ -3097,12 +3158,13 @@ typedef $$HikesTableCreateCompanionBuilder =
       Value<String?> cloudId,
       required String mountainName,
       required DateTime hikeDate,
-      Value<int?> durationMinutes,
+      Value<int?> durationSeconds,
       Value<double?> totalDistanceKm,
       Value<double?> totalElevationGainMeters,
       Value<double?> totalElevationLossMeters,
       Value<double?> averageSpeedKmh,
       Value<double?> maxSpeedKmh,
+      Value<double?> averagePaceMinPerKm,
       Value<String?> startWeatherCondition,
       Value<double?> startTemperature,
       Value<String?> partners,
@@ -3117,12 +3179,13 @@ typedef $$HikesTableUpdateCompanionBuilder =
       Value<String?> cloudId,
       Value<String> mountainName,
       Value<DateTime> hikeDate,
-      Value<int?> durationMinutes,
+      Value<int?> durationSeconds,
       Value<double?> totalDistanceKm,
       Value<double?> totalElevationGainMeters,
       Value<double?> totalElevationLossMeters,
       Value<double?> averageSpeedKmh,
       Value<double?> maxSpeedKmh,
+      Value<double?> averagePaceMinPerKm,
       Value<String?> startWeatherCondition,
       Value<double?> startTemperature,
       Value<String?> partners,
@@ -3223,8 +3286,8 @@ class $$HikesTableFilterComposer extends Composer<_$AppDatabase, $HikesTable> {
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get durationMinutes => $composableBuilder(
-    column: $table.durationMinutes,
+  ColumnFilters<int> get durationSeconds => $composableBuilder(
+    column: $table.durationSeconds,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3250,6 +3313,11 @@ class $$HikesTableFilterComposer extends Composer<_$AppDatabase, $HikesTable> {
 
   ColumnFilters<double> get maxSpeedKmh => $composableBuilder(
     column: $table.maxSpeedKmh,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get averagePaceMinPerKm => $composableBuilder(
+    column: $table.averagePaceMinPerKm,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3394,8 +3462,8 @@ class $$HikesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get durationMinutes => $composableBuilder(
-    column: $table.durationMinutes,
+  ColumnOrderings<int> get durationSeconds => $composableBuilder(
+    column: $table.durationSeconds,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -3421,6 +3489,11 @@ class $$HikesTableOrderingComposer
 
   ColumnOrderings<double> get maxSpeedKmh => $composableBuilder(
     column: $table.maxSpeedKmh,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get averagePaceMinPerKm => $composableBuilder(
+    column: $table.averagePaceMinPerKm,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -3481,8 +3554,8 @@ class $$HikesTableAnnotationComposer
   GeneratedColumn<DateTime> get hikeDate =>
       $composableBuilder(column: $table.hikeDate, builder: (column) => column);
 
-  GeneratedColumn<int> get durationMinutes => $composableBuilder(
-    column: $table.durationMinutes,
+  GeneratedColumn<int> get durationSeconds => $composableBuilder(
+    column: $table.durationSeconds,
     builder: (column) => column,
   );
 
@@ -3508,6 +3581,11 @@ class $$HikesTableAnnotationComposer
 
   GeneratedColumn<double> get maxSpeedKmh => $composableBuilder(
     column: $table.maxSpeedKmh,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get averagePaceMinPerKm => $composableBuilder(
+    column: $table.averagePaceMinPerKm,
     builder: (column) => column,
   );
 
@@ -3649,12 +3727,13 @@ class $$HikesTableTableManager
                 Value<String?> cloudId = const Value.absent(),
                 Value<String> mountainName = const Value.absent(),
                 Value<DateTime> hikeDate = const Value.absent(),
-                Value<int?> durationMinutes = const Value.absent(),
+                Value<int?> durationSeconds = const Value.absent(),
                 Value<double?> totalDistanceKm = const Value.absent(),
                 Value<double?> totalElevationGainMeters = const Value.absent(),
                 Value<double?> totalElevationLossMeters = const Value.absent(),
                 Value<double?> averageSpeedKmh = const Value.absent(),
                 Value<double?> maxSpeedKmh = const Value.absent(),
+                Value<double?> averagePaceMinPerKm = const Value.absent(),
                 Value<String?> startWeatherCondition = const Value.absent(),
                 Value<double?> startTemperature = const Value.absent(),
                 Value<String?> partners = const Value.absent(),
@@ -3667,12 +3746,13 @@ class $$HikesTableTableManager
                 cloudId: cloudId,
                 mountainName: mountainName,
                 hikeDate: hikeDate,
-                durationMinutes: durationMinutes,
+                durationSeconds: durationSeconds,
                 totalDistanceKm: totalDistanceKm,
                 totalElevationGainMeters: totalElevationGainMeters,
                 totalElevationLossMeters: totalElevationLossMeters,
                 averageSpeedKmh: averageSpeedKmh,
                 maxSpeedKmh: maxSpeedKmh,
+                averagePaceMinPerKm: averagePaceMinPerKm,
                 startWeatherCondition: startWeatherCondition,
                 startTemperature: startTemperature,
                 partners: partners,
@@ -3687,12 +3767,13 @@ class $$HikesTableTableManager
                 Value<String?> cloudId = const Value.absent(),
                 required String mountainName,
                 required DateTime hikeDate,
-                Value<int?> durationMinutes = const Value.absent(),
+                Value<int?> durationSeconds = const Value.absent(),
                 Value<double?> totalDistanceKm = const Value.absent(),
                 Value<double?> totalElevationGainMeters = const Value.absent(),
                 Value<double?> totalElevationLossMeters = const Value.absent(),
                 Value<double?> averageSpeedKmh = const Value.absent(),
                 Value<double?> maxSpeedKmh = const Value.absent(),
+                Value<double?> averagePaceMinPerKm = const Value.absent(),
                 Value<String?> startWeatherCondition = const Value.absent(),
                 Value<double?> startTemperature = const Value.absent(),
                 Value<String?> partners = const Value.absent(),
@@ -3705,12 +3786,13 @@ class $$HikesTableTableManager
                 cloudId: cloudId,
                 mountainName: mountainName,
                 hikeDate: hikeDate,
-                durationMinutes: durationMinutes,
+                durationSeconds: durationSeconds,
                 totalDistanceKm: totalDistanceKm,
                 totalElevationGainMeters: totalElevationGainMeters,
                 totalElevationLossMeters: totalElevationLossMeters,
                 averageSpeedKmh: averageSpeedKmh,
                 maxSpeedKmh: maxSpeedKmh,
+                averagePaceMinPerKm: averagePaceMinPerKm,
                 startWeatherCondition: startWeatherCondition,
                 startTemperature: startTemperature,
                 partners: partners,
