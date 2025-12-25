@@ -108,7 +108,43 @@ final supabaseProviderProvider = AutoDisposeProvider<SupabaseClient>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef SupabaseProviderRef = AutoDisposeProviderRef<SupabaseClient>;
-String _$syncRepositoryHash() => r'a2d24521145ff8e5f6c6b0824e45f55609fd67d8';
+String _$dioHash() => r'58eeefbd0832498ca2574c1fe69ed783c58d1d8f';
+
+/// See also [dio].
+@ProviderFor(dio)
+final dioProvider = AutoDisposeProvider<Dio>.internal(
+  dio,
+  name: r'dioProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$dioHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef DioRef = AutoDisposeProviderRef<Dio>;
+String _$weatherServiceHash() => r'e88752215cdf63d0475868d6742cc1a35f941ce7';
+
+/// Provider untuk WeatherService
+///
+/// Copied from [weatherService].
+@ProviderFor(weatherService)
+final weatherServiceProvider = AutoDisposeProvider<WeatherService>.internal(
+  weatherService,
+  name: r'weatherServiceProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$weatherServiceHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef WeatherServiceRef = AutoDisposeProviderRef<WeatherService>;
+String _$syncRepositoryHash() => r'63f9e224b0fd3fbe8e7d727f1a5fcb44d407eced';
 
 /// See also [syncRepository].
 @ProviderFor(syncRepository)

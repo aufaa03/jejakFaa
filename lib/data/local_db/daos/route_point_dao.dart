@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:jejak_faa_new/data/local_db/database.dart';
 import 'package:jejak_faa_new/data/local_db/tables.dart';
+import 'package:jejak_faa_new/data/models/location_models.dart';
 import 'package:jejak_faa_new/data/models/sync_status.dart';
 
 part 'route_point_dao.g.dart';
@@ -97,6 +98,34 @@ Future<int> getRoutePointCountForHike(int hikeId) async {
       .get();
   print('[RoutePointDao] Route point count for hike $hikeId: ${result.length}');
   return result.length;
+}
+/// Get last route point untuk hike
+Future<RoutePoint?> getLastRoutePoint(int hikeId) {
+    return (select(routePoints)
+          ..where((tbl) => tbl.hikeId.equals(hikeId))
+          ..orderBy([(tbl) => OrderingTerm(expression: tbl.timestamp, mode: OrderingMode.desc)])
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
+  Future<PositionData?> getLastPositionData(int hikeId) async {
+  final lastPoint = await (select(routePoints)
+        ..where((tbl) => tbl.hikeId.equals(hikeId))
+        ..orderBy([(tbl) => OrderingTerm(expression: tbl.timestamp, mode: OrderingMode.desc)])
+        ..limit(1))
+      .getSingleOrNull();
+
+  if (lastPoint == null) {
+    return null;
+  }
+
+  return PositionData(
+    latitude: lastPoint.latitude,
+    longitude: lastPoint.longitude,
+    altitude: lastPoint.altitude ?? 0.0,
+    speedKmh: lastPoint.speedKmh ?? 0.0,
+    timestamp: lastPoint.timestamp,
+  );
 }
 }
 

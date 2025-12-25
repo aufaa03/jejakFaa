@@ -19,7 +19,17 @@ part 'database.g.dart';
   daos: [HikeDao, HikePhotoDao, HikeWaypointDao, RoutePointDao]
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  AppDatabase._internal() : super(_openConnection());
+
+  // 2. BUAT SATU STATIC INSTANCE (SINGLETON)
+  static final AppDatabase _instance = AppDatabase._internal();
+
+  // 3. BUAT 'FACTORY' CONSTRUCTOR
+  //    Ini memastikan siapa pun yang memanggil 'AppDatabase()'
+  //    akan selalu mendapatkan instance yang SAMA
+  factory AppDatabase() {
+    return _instance;
+  }
 
   @override
   // --- 1. NAIKKAN VERSI SCHEMA DARI 2 KE 3 ---

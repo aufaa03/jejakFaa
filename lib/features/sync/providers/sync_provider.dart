@@ -4,11 +4,14 @@ import 'package:jejak_faa_new/data/local_db/database_providers.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:jejak_faa_new/core/services/connectivity_provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 part 'sync_provider.g.dart';
 
 @riverpod
 class Sync extends _$Sync {
+
+  bool _isSyncLocked = false; // Penjaga untuk mencegah sinkronisasi ganda
   @override
   FutureOr<void> build() {
     print('[SyncProvider] Build: Memulai pemicu otomatis.');
@@ -23,12 +26,12 @@ class Sync extends _$Sync {
     );
 
     // --- PEMICU 2: Dengarkan Perubahan Jumlah Data Pending ---
-    ref.listen<AsyncValue<int>>(
-      pendingHikesCountProvider,
-      (previous, next) {
-        _handlePendingCountChange(previous, next);
-      },
-    );
+    // ref.listen<AsyncValue<int>>(
+    //   pendingHikesCountProvider,
+    //   (previous, next) {
+    //     _handlePendingCountChange(previous, next);
+    //   },
+    // );
 
     // --- PEMICU 3: Sync Awal Saat Aplikasi Dibuka ---
     Future.delayed(const Duration(seconds: 5), () {
@@ -96,10 +99,23 @@ class Sync extends _$Sync {
     final bool isOnline = !connectivityList.contains(ConnectivityResult.none);
     
     if (state.isLoading) return; // Batal jika sedang loading
+
+    if (_isSyncLocked) {
+    print('[SyncProvider] Batal sync: Sinkronisasi lain sedang berjalan (locked).');
+    return;
+  }
+  _isSyncLocked = true;
+
     if (!isOnline) {
       print('[SyncProvider] Batal sync (syncNow): Tidak ada internet.');
       return; // Batal jika tidak ada internet
     }
+    // 2. Cek apakah pelacakan sedang aktif
+    final prefs = await SharedPreferences.getInstance();
+  if (prefs.getInt('ongoing_hike_id') != null) {
+    print('[SyncProvider] Pelacakan sedang aktif. Sinkronisasi ditunda.');
+    return; // LANGSUNG KELUAR
+  }
 
     // =======================================================
     // == 2. "PENJAGA" (GUARD CLAUSE) YANG SALAH SUDAH DIHAPUS ==
@@ -124,6 +140,9 @@ class Sync extends _$Sync {
     } catch (e, s) {
       state = AsyncValue.error(e, s);
       print('[SyncProvider] Sinkronisasi GAGAL: $e');
+    }
+    finally {
+      _isSyncLocked = false;
     }
   }
 }

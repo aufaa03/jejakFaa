@@ -3,23 +3,29 @@ import 'dart:math'; // Diperlukan untuk 'max'
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart' as geo;
+// Import 'currentGpsLocationProvider'
 import 'package:jejak_faa_new/core/services/gps_service.dart';
 import 'package:jejak_faa_new/data/local_db/daos/hike_dao.dart';
 import 'package:jejak_faa_new/data/models/location_models.dart';
 import 'package:jejak_faa_new/data/local_db/database.dart';
 import 'package:jejak_faa_new/data/local_db/database_providers.dart';
+// Import provider database
+import 'package:jejak_faa_new/features/hike_log/providers/route_points_provider.dart';
 import 'package:jejak_faa_new/data/models/sync_status.dart';
+import 'package:jejak_faa_new/features/map_view/providers/weather_provider.dart';
+import 'package:jejak_faa_new/features/sync/providers/sync_provider.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+// Import service baru kita
+import 'package:flutter_background_service/flutter_background_service.dart';
 
 part 'map_provider.g.dart';
 
-/// Model untuk Waypoint (POI)
+// ... (Class WaypointData dan MapTrackingState tetap sama) ...
 @immutable
 class WaypointData {
-  // ... (Tetap sama)
   const WaypointData({
     required this.latitude,
     required this.longitude,
@@ -34,7 +40,6 @@ class WaypointData {
   final String? category;
 }
 
-/// Model status untuk MapProvider
 @immutable
 class MapTrackingState {
   const MapTrackingState({
@@ -47,7 +52,7 @@ class MapTrackingState {
     required this.liveElevationGainMeters,
     required this.liveElevationLossMeters,
     required this.liveMaxSpeedKmh,
-    required this.livePaceMinPerKm, // <-- TAMBAHAN
+    required this.livePaceMinPerKm,
     required this.liveDuration,
     this.lastPosition,
     this.isPickingWaypoint = false,
@@ -62,7 +67,7 @@ class MapTrackingState {
   final double liveElevationGainMeters;
   final double liveElevationLossMeters;
   final double liveMaxSpeedKmh;
-  final double livePaceMinPerKm; // <-- TAMBAHAN
+  final double livePaceMinPerKm;
   final Duration liveDuration;
   final PositionData? lastPosition;
   final bool isPickingWaypoint;
@@ -78,7 +83,7 @@ class MapTrackingState {
       liveElevationGainMeters: 0,
       liveElevationLossMeters: 0,
       liveMaxSpeedKmh: 0,
-      livePaceMinPerKm: 0.0, // <-- TAMBAHAN
+      livePaceMinPerKm: 0.0,
       liveDuration: Duration.zero,
       lastPosition: null,
       isPickingWaypoint: false,
@@ -95,7 +100,7 @@ class MapTrackingState {
     double? liveElevationGainMeters,
     double? liveElevationLossMeters,
     double? liveMaxSpeedKmh,
-    double? livePaceMinPerKm, // <-- TAMBAHAN
+    double? livePaceMinPerKm,
     Duration? liveDuration,
     PositionData? lastPosition,
     bool? isPickingWaypoint,
@@ -112,7 +117,7 @@ class MapTrackingState {
       liveElevationLossMeters:
           liveElevationLossMeters ?? this.liveElevationLossMeters,
       liveMaxSpeedKmh: liveMaxSpeedKmh ?? this.liveMaxSpeedKmh,
-      livePaceMinPerKm: livePaceMinPerKm ?? this.livePaceMinPerKm, // <-- TAMBAHAN
+      livePaceMinPerKm: livePaceMinPerKm ?? this.livePaceMinPerKm,
       liveDuration: liveDuration ?? this.liveDuration,
       lastPosition: lastPosition ?? this.lastPosition,
       isPickingWaypoint: isPickingWaypoint ?? this.isPickingWaypoint,
@@ -120,217 +125,322 @@ class MapTrackingState {
   }
 }
 
-/// "OTAK" DARI FITUR PELACAKAN
+/// "OTAK" DARI FITUR PELACAKAN (VERSI REFAKTOR)
+// Salin ke: map_provider.dart
+// (Pastikan semua import sudah ada di atas file)
 @riverpod
 class MapNotifier extends _$MapNotifier {
-  // ... (Properti lain tetap sama) ...
-  StreamSubscription<PositionData>? _positionSubscription;
-  Timer? _durationTimer;
-  final Stopwatch _stopwatch = Stopwatch();
-  double _uncommittedElevationGain = 0.0;
-  double _uncommittedElevationLoss = 0.0;
+  // --- HAPUS SEMUA TIMER & STOPWATCH DARI SINI ---
+  // HAPUS: _stopwatch, _durationTimer
+
+  // GANTI DENGAN POLLER (Pembaca Buku Log)
+  Timer? _liveStatsPoller;
+
   String? _mountainName;
   DateTime? _hikeDate;
   bool _isSaving = false;
   bool _isStarting = false;
+  PositionData? _lastGpsPosition; // Untuk pace/speed UI
 
   @override
   MapTrackingState build() {
     ref.onDispose(() {
       print('[MapProvider] Disposing MapNotifier');
-      _cleanupSubscriptions();
+      _liveStatsPoller?.cancel();
     });
+
+    // PANGGIL FUNGSI UNTUK CEK STATUS SAAT APP DIBUKA
+    _checkAndRestoreSession();
+
     return MapTrackingState.initial();
+  }
+
+  // --- FUNGSI BARU UNTUK MEMULIHKAN STATE (FIX BUG POPUP JEDA) ---
+  Future<void> _checkAndRestoreSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final int? hikeId = prefs.getInt('ongoing_hike_id');
+    final String? status = prefs.getString('tracking_status');
+
+    if (hikeId == null || status == null) {
+      print('[MapProvider] Tidak ada sesi untuk dipulihkan.');
+      return; // Selesai, tidak ada sesi
+    }
+
+    print('[MapProvider] ⚠️ Memulihkan sesi (Hike $hikeId, Status: $status)');
+
+    // Muat data terakhir dari DB
+    await _reloadStateFromDatabase(hikeId);
+
+    // Atur state UI
+    if (status == 'tracking') {
+      // FIX BUG RELOG: Jika status 'tracking', langsung masuk mode tracking
+      // JANGAN TAMPILKAN POPUP
+      state = state.copyWith(
+        isTracking: true,
+        isPaused: false,
+        currentHikeId: hikeId,
+      );
+      _startLiveStatsPoller(); // Mulai dengarkan data live
+    } else if (status == 'paused') {
+      // FIX BUG POPUP: Jika status 'paused', baru tampilkan popup
+      // (UI akan otomatis menampilkan popup jika isTracking=true dan isPaused=true)
+      state = state.copyWith(
+        isTracking: true,
+        isPaused: true,
+        currentHikeId: hikeId,
+        // liveDuration & liveDistance sudah diisi oleh _reloadStateFromDatabase
+      );
+    }
   }
 
   Future<int?> get pausedHikeId async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt('ongoing_hike_id');
+    final status = prefs.getString('tracking_status');
+    // Hanya kembalikan ID jika statusnya BENAR-BENAR 'paused'
+    if (status == 'paused') {
+      return prefs.getInt('ongoing_hike_id');
+    }
+    return null;
   }
 
-  // ... (Fungsi startTracking Anda sudah benar) ...
+  /// =======================================================
+  /// METODE 1: MULAI MEREKAM (Disederhanakan)
+  /// =======================================================
   Future<void> startTracking() async {
-    if (state.isTracking || _isStarting) {
-      print(
-        '[MapProvider] Start already in progress or tracking active, skipping',
-      );
-      return;
-    }
+    if (state.isTracking || _isStarting) return;
     _isStarting = true;
+
     try {
-      print('[MapProvider] Memulai pelacakan (guarded)...');
+      print('[MapProvider] ════════════════════════════════════');
+      print('[MapProvider] Memulai pelacakan baru...');
+
       final prefs = await SharedPreferences.getInstance();
-      final persistedHikeId = prefs.getInt('ongoing_hike_id');
-      final pausedFlag = prefs.getBool('ongoing_hike_paused') ?? false;
       final hikeDao = ref.read(hikeDaoProvider);
-      if (persistedHikeId != null && !pausedFlag) {
-        print('[MapProvider] Auto-resuming existing Hike ID: $persistedHikeId');
-        _mountainName ??= 'Jejak Lanjutan';
-        _stopwatch.start();
-        _startDurationTimer();
-        _startPositionStreamListener(persistedHikeId);
-        state = state.copyWith(
-          isTracking: true,
-          isPaused: false,
-          currentHikeId: persistedHikeId,
-        );
-        _isStarting = false;
-        return;
-      }
-      if (persistedHikeId != null && pausedFlag) {
-        print(
-          '[MapProvider] Found paused session (id: $persistedHikeId). UI should prompt resume.',
-        );
-        _isStarting = false;
-        return;
-      }
+
+      // --- DAPATKAN POSISI AWAL ---
       PositionData? startPosition;
       try {
-        print('[MapProvider] Requesting initial location...');
         startPosition = await ref.read(currentGpsLocationProvider.future);
-        if (startPosition == null) {
-          print('[MapProvider] Could not get initial location (null)');
-          _isStarting = false;
-          return;
-        }
-        print(
-          '[MapProvider] Initial location received: ${startPosition.latitude}, ${startPosition.longitude}',
-        );
+        if (startPosition == null)
+          throw Exception("Cannot get initial position");
       } catch (e) {
-        print('[MapProvider] Gagal memulai - tidak dapat lokasi awal: $e');
         _isStarting = false;
-        return;
+        rethrow;
       }
+      _lastGpsPosition = startPosition; // Simpan untuk pace
+
+      // --- AMBIL CUACA ---
+      final weatherSnapshot = await ref
+          .read(weatherProvider.notifier)
+          .fetchWeather(startPosition.latitude, startPosition.longitude);
+
+      // --- BUAT HIKE BARU ---
       _hikeDate = DateTime.now();
-      _mountainName ??=
+      _mountainName =
           'Jejak Baru ${DateTime.now().day}/${DateTime.now().month}';
       final newHikeCompanion = HikesCompanion(
         userId: Value(ref.read(supabaseProviderProvider).auth.currentUser!.id),
         mountainName: Value(_mountainName!),
         hikeDate: Value(_hikeDate!),
+        startWeatherCondition: Value(weatherSnapshot?.conditionMain),
+        startTemperature: Value(weatherSnapshot?.temp),
+        durationSeconds: const Value(0), // Mulai dari 0
       );
       final newHike = await hikeDao.insertHike(newHikeCompanion);
       final newHikeId = newHike.id;
+
+      // --- SIMPAN STATE KE BUKU LOG (PREFS) ---
       await prefs.setInt('ongoing_hike_id', newHikeId);
-      await prefs.setBool('ongoing_hike_paused', false);
-      _stopwatch.start();
-      _startDurationTimer();
-      _startPositionStreamListener(newHikeId);
+      await prefs.setString('tracking_status', 'tracking');
+      await prefs.setInt('live_duration_seconds', 0); // FIX TIMER GA JALAN
+      await prefs.setDouble('live_distance_meters', 0.0); // FIX TIMER GA JALAN
+
+      // --- KIRIM PERINTAH KE SERVICE ---
+      await prefs.setString('tracking_command', 'START');
+
+      // Update UI
       state = state.copyWith(
         isTracking: true,
         isPaused: false,
         currentHikeId: newHikeId,
         livePoints: [LatLng(startPosition.latitude, startPosition.longitude)],
         lastPosition: startPosition,
-        liveMaxSpeedKmh: startPosition.speedKmh ?? 0.0,
+        liveDuration: Duration.zero, // UI mulai dari 0
+        liveDistanceMeters: 0.0,
       );
-      print('[MapProvider] Pelacakan dimulai untuk Hike ID: $newHikeId');
+
+      _startLiveStatsPoller(); // Mulai poller UI
+
+      print('[MapProvider] ✅ Tracking started');
+    } catch (e, st) {
+      print('[MapProvider] ❌ Error: $e\n$st');
     } finally {
       _isStarting = false;
     }
   }
 
-  // ... (Fungsi resumeTracking Anda sudah benar) ...
+  /// =======================================================
+  /// METODE 2: RESUME MANUAL (Disederhanakan)
+  /// =======================================================
   Future<void> resumeTracking() async {
     final prefs = await SharedPreferences.getInstance();
     final persistedHikeId = prefs.getInt('ongoing_hike_id');
-    if (persistedHikeId == null) {
-      print('[MapProvider] No persisted hike to resume');
-      return;
-    }
-    PositionData? resumePosition;
-    try {
-      resumePosition = await ref.read(currentGpsLocationProvider.future);
-    } catch (e) {
-      print("[MapProvider] Gagal dapat lokasi saat resume: $e");
-    }
-    print('[MapProvider] Resuming persisted hike: $persistedHikeId');
-    await prefs.setBool('ongoing_hike_paused', false);
-    _mountainName ??= 'Jejak Lanjutan';
-    _stopwatch.start();
-    _startDurationTimer();
-    _startPositionStreamListener(persistedHikeId);
-    state = state.copyWith(
-      isTracking: true,
-      isPaused: false,
-      currentHikeId: persistedHikeId,
-      lastPosition: resumePosition ?? state.lastPosition,
-    );
+    if (persistedHikeId == null) return;
+
+    print('[MapProvider] Resuming hike: $persistedHikeId');
+
+    // Muat ulang state (poin, durasi, jarak) dari DB
+    await _reloadStateFromDatabase(persistedHikeId);
+
+    // Ambil data yang BARU di-reload dari state
+    final lastKnownDuration = state.liveDuration.inSeconds;
+    final lastKnownDistance = state.liveDistanceMeters;
+
+    // --- SIMPAN STATE KE BUKU LOG (PREFS) ---
+    await prefs.setString('tracking_status', 'tracking');
+    await prefs.setInt('live_duration_seconds', lastKnownDuration);
+    await prefs.setDouble('live_distance_meters', lastKnownDistance);
+
+    // --- KIRIM PERINTAH KE SERVICE ---
+    await prefs.setString('tracking_command', 'START');
+
+    state = state.copyWith(isTracking: true, isPaused: false);
+    _startLiveStatsPoller(); // Mulai poller UI
   }
-  
-  // ... (Fungsi pauseTracking Anda sudah benar) ...
+
+  /// =======================================================
+  /// METODE 3: PAUSE (Disederhanakan)
+  /// =======================================================
   Future<void> pauseTracking() async {
     if (!state.isTracking || state.isPaused) return;
     print('[MapProvider] Pelacakan dijeda...');
-    _positionSubscription?.cancel();
-    _positionSubscription = null;
-    _durationTimer?.cancel();
-    _durationTimer = null;
-    _stopwatch.stop();
-    state = state.copyWith(isPaused: true);
+
+    _liveStatsPoller?.cancel(); // Hentikan poller UI
+    _liveStatsPoller = null;
+
     final prefs = await SharedPreferences.getInstance();
-    if (state.currentHikeId != null) {
-      await prefs.setBool('ongoing_hike_paused', true);
-    }
+
+    // --- SIMPAN STATE KE BUKU LOG (PREFS) ---
+    await prefs.setString('tracking_status', 'paused');
+
+    // --- KIRIM PERINTAH KE SERVICE ---
+    await prefs.setString('tracking_command', 'PAUSE');
+
+    // Update UI
+    state = state.copyWith(
+      isPaused: true,
+      // (Durasi & Jarak live terakhir biarkan tersimpan di state)
+    );
   }
 
   /// =======================================================
-  /// METODE 4: BERHENTI & SIMPAN (UPGRADE PACE)
+  /// METODE 4: STOP (FULL CODE)
   /// =======================================================
   Future<Hike?> stopTrackingAndGetHike() async {
     if (!state.isTracking || state.currentHikeId == null) return null;
-    if (_isSaving) {
-      print('[MapProvider] stopTracking already in progress, skipping');
-      return null;
-    }
+    if (_isSaving) return null;
     _isSaving = true;
-
-    print('[MapProvider] Menghentikan pelacakan (idempotent save)...');
+    print('[MapProvider] Menghentikan pelacakan...');
 
     try {
-      _cleanupSubscriptions();
-      _stopwatch.stop();
-      _stopwatch.reset();
-      _durationTimer?.cancel();
-      _durationTimer = null;
+      _liveStatsPoller?.cancel();
+      _liveStatsPoller = null;
 
+      final prefs = await SharedPreferences.getInstance();
       final hikeDao = ref.read(hikeDaoProvider);
+      final routePointDao = ref.read(routePointDaoProvider);
+      final hikeId = state.currentHikeId!;
 
-      final Hike? currentHike = await hikeDao.getHikeById(state.currentHikeId!);
-      if (currentHike == null) throw Exception("Hike data missing during save");
+      await prefs.setString('tracking_command', 'STOP');
+      await Future.delayed(const Duration(seconds: 1)); 
 
-      final SyncStatus newSyncStatus = 
-          (currentHike.syncStatus == SyncStatus.synced)
-              ? SyncStatus.pending_update
-              : SyncStatus.pending;
-
-      // --- LOGIKA STATISTIK BARU ---
+      await prefs.remove('ongoing_hike_id');
+      await prefs.remove('tracking_status');
+      await prefs.remove('live_duration_seconds');
+      await prefs.remove('live_distance_meters');
       
-      // Final stats - Gain & Loss
-      double finalElevationGain = state.liveElevationGainMeters;
+      final currentHike = await hikeDao.getHikeById(hikeId);
+      if (currentHike == null) throw Exception("Hike data missing");
+      
+      final finalTotalDuration = Duration(seconds: currentHike.durationSeconds ?? 0);
+
+      // --- MULAI KALKULASI STATISTIK AKHIR ---
+      final allRoutePoints = await (routePointDao.select(
+        routePointDao.routePoints,
+      )..where((tbl) => tbl.hikeId.equals(hikeId)))
+          .get();
+
+      print(
+        '[MapProvider] Menghitung statistik akhir dari ${allRoutePoints.length} titik...',
+      );
+
+      double finalTotalKm = 0.0;
+      double finalMaxSpeed = 0.0;
+      double finalElevationGain = 0.0;
+      double finalElevationLoss = 0.0;
+      double uncommittedGain = 0.0;
+      double uncommittedLoss = 0.0;
       const GAIN_COMMIT_THRESHOLD = 1.5;
-      if (_uncommittedElevationGain >= GAIN_COMMIT_THRESHOLD) {
-        finalElevationGain += _uncommittedElevationGain;
-      }
-      _uncommittedElevationGain = 0.0;
-      double finalElevationLoss = state.liveElevationLossMeters;
       const LOSS_COMMIT_THRESHOLD = 1.5;
-      if (_uncommittedElevationLoss >= LOSS_COMMIT_THRESHOLD) {
-        finalElevationLoss += _uncommittedElevationLoss;
-      }
-      _uncommittedElevationLoss = 0.0;
-      
-      // Final stats - Pace
-      final double totalMinutes = state.liveDuration.inSeconds / 60.0;
-      final double totalKm = state.liveDistanceMeters / 1000.0;
-      // Rumus: Menit / Kilometer
-      final double averagePace = (totalKm > 0 && totalMinutes > 0) ? (totalMinutes / totalKm) : 0.0;
+      const RESET_THRESHOLD = 0.5;
+      RoutePoint? lastPoint;
 
-      print('[MapProvider] Pace: ${averagePace.toStringAsFixed(2)} min/km');
-      // --- AKHIR LOGIKA STATISTIK BARU ---
+      for (final point in allRoutePoints) {
+        if (lastPoint != null) {
+          finalTotalKm +=
+              geo.Geolocator.distanceBetween(
+                lastPoint.latitude,
+                lastPoint.longitude,
+                point.latitude,
+                point.longitude,
+              ) /
+              1000.0; // Langsung konversi ke KM
+
+          if (point.altitude != null && lastPoint.altitude != null) {
+            final elevationDiff = point.altitude! - lastPoint.altitude!;
+            if (elevationDiff > RESET_THRESHOLD) {
+              uncommittedGain += elevationDiff;
+              if (uncommittedLoss >= LOSS_COMMIT_THRESHOLD) {
+                finalElevationLoss += uncommittedLoss;
+              }
+              uncommittedLoss = 0.0;
+            } else if (elevationDiff < -RESET_THRESHOLD) {
+              uncommittedLoss += elevationDiff.abs();
+              if (uncommittedGain >= GAIN_COMMIT_THRESHOLD) {
+                finalElevationGain += uncommittedGain;
+              }
+              uncommittedGain = 0.0;
+            }
+          }
+        }
+        finalMaxSpeed = max(finalMaxSpeed, point.speedKmh ?? 0.0);
+        lastPoint = point;
+      }
+
+      if (uncommittedGain >= GAIN_COMMIT_THRESHOLD) {
+        finalElevationGain += uncommittedGain;
+      }
+      if (uncommittedLoss >= LOSS_COMMIT_THRESHOLD) {
+        finalElevationLoss += uncommittedLoss;
+      }
+
+      final double totalMinutes = finalTotalDuration.inSeconds / 60.0;
+      final double averagePace = (finalTotalKm > 0 && totalMinutes > 0)
+          ? (totalMinutes / finalTotalKm)
+          : 0.0;
+      
+      print('[MapProvider] Stats calculated: ${finalTotalKm.toStringAsFixed(2)} km');
+      // --- SELESAI KALKULASI STATISTIK AKHIR ---
+      
+      await _calculateWaypointStats(hikeId);
+
+      final SyncStatus newSyncStatus =
+          (currentHike.syncStatus == SyncStatus.synced)
+          ? SyncStatus.pending_update
+          : SyncStatus.pending;
 
       final finalStatsCompanion = HikesCompanion(
-        id: Value(state.currentHikeId!),
+        id: Value(hikeId),
         userId: Value(currentHike.userId),
         cloudId: Value(currentHike.cloudId),
         partners: Value(currentHike.partners),
@@ -338,42 +448,42 @@ class MapNotifier extends _$MapNotifier {
         isDeleted: Value(currentHike.isDeleted),
         mountainName: Value(_mountainName ?? currentHike.mountainName),
         hikeDate: Value(_hikeDate ?? currentHike.hikeDate),
-        
-        // --- SIMPAN STATISTIK BARU ---
-        durationSeconds: Value(state.liveDuration.inSeconds),
-        totalDistanceKm: Value(totalKm),
+        durationSeconds: Value(finalTotalDuration.inSeconds),
+        totalDistanceKm: Value(finalTotalKm),
         totalElevationGainMeters: Value(finalElevationGain),
         totalElevationLossMeters: Value(finalElevationLoss),
-        averagePaceMinPerKm: Value(averagePace), // <-- Simpan PACE
-        maxSpeedKmh: Value(state.liveMaxSpeedKmh), 
-        // caloriesBurned: (Dihapus sesuai permintaan)
-        // --- AKHIR SIMPAN STATISTIK BARU ---
-        
+        averagePaceMinPerKm: Value(averagePace),
+        maxSpeedKmh: Value(finalMaxSpeed),
         startWeatherCondition: Value(currentHike.startWeatherCondition),
         startTemperature: Value(currentHike.startTemperature),
         syncStatus: Value(newSyncStatus),
       );
 
       await hikeDao.updateHike(finalStatsCompanion);
-      print('[MapProvider] Pelacakan dihentikan dan disimpan.');
+      print('[MapProvider] ✅ Hike updated dengan statistik');
       
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('ongoing_hike_id');
-      await prefs.remove('ongoing_hike_paused');
+      final Hike? finalHike = await hikeDao.getHikeById(hikeId);
+      
+      state = MapTrackingState.initial(); 
 
-      final Hike? hike = await hikeDao.getHikeById(state.currentHikeId!);
-      state = MapTrackingState.initial();
+      print('[MapProvider] Memicu sinkronisasi pasca-pelacakan...');
+      ref.read(syncProvider.notifier).syncNow();
 
-      return hike;
+      return finalHike;
+
     } catch (e, st) {
-      print('[MapProvider] Error stopping tracking: $e\n$st');
+      print('[MapProvider] ❌ Error stopping tracking: $e');
+      print('[MapProvider] Stack: $st');
+      _isSaving = false;
       rethrow;
     } finally {
       _isSaving = false;
     }
   }
 
-  // ... (Fungsi addWaypoint Anda sudah benar) ...
+  /// =======================================================
+  /// METODE 5: TAMBAH WAYPOINT
+  /// =======================================================
   Future<HikeWaypoint?> addWaypoint(
     String name,
     String? description,
@@ -392,6 +502,7 @@ class MapNotifier extends _$MapNotifier {
       final double longitude;
       final double? altitude;
       final DateTime timestamp;
+
       if (tappedLatLng != null) {
         print('[MapProvider] Menambah waypoint dari Peta');
         latitude = tappedLatLng.latitude;
@@ -400,16 +511,28 @@ class MapNotifier extends _$MapNotifier {
         timestamp = DateTime.now();
       } else {
         print('[MapProvider] Menambah waypoint dari Lokasi GPS');
-        if (state.lastPosition == null) {
-          print('[MapProvider] Gagal menambah: Lokasi GPS terakhir tidak ada');
-          return null;
+        final lastPos = await ref
+            .read(routePointDaoProvider)
+            .getLastRoutePoint(state.currentHikeId!);
+
+        if (lastPos == null) {
+          print('[MapProvider] Gagal menambah: Tidak ada RoutePoint di DB');
+          if (state.lastPosition != null) {
+            latitude = state.lastPosition!.latitude;
+            longitude = state.lastPosition!.longitude;
+            altitude = state.lastPosition!.altitude;
+            timestamp = state.lastPosition!.timestamp;
+          } else {
+            return null;
+          }
+        } else {
+          latitude = lastPos.latitude;
+          longitude = lastPos.longitude;
+          altitude = lastPos.altitude;
+          timestamp = lastPos.timestamp;
         }
-        final pos = state.lastPosition!;
-        latitude = pos.latitude;
-        longitude = pos.longitude;
-        altitude = pos.altitude;
-        timestamp = pos.timestamp;
       }
+
       final companion = HikeWaypointsCompanion(
         hikeId: Value(state.currentHikeId!),
         latitude: Value(latitude),
@@ -420,21 +543,14 @@ class MapNotifier extends _$MapNotifier {
         description: Value(description),
         category: Value(category),
       );
+
       final newWaypoint = await waypointDao
           .into(waypointDao.hikeWaypoints)
           .insertReturning(companion);
-      state = state.copyWith(
-        liveWaypoints: [
-          ...state.liveWaypoints,
-          WaypointData(
-            latitude: latitude,
-            longitude: longitude,
-            name: name,
-            description: description,
-            category: category,
-          ),
-        ],
-      );
+
+      // (Update state liveWaypoints jika diperlukan, tapi ini akan
+      //  diambil oleh _reloadStateFromDatabase)
+
       print('[MapProvider] Waypoint "$name" disimpan (ID: ${newWaypoint.id}).');
       return newWaypoint;
     } catch (e) {
@@ -443,203 +559,85 @@ class MapNotifier extends _$MapNotifier {
     }
   }
 
-  // ... (Fungsi enter/exit WaypointPickMode Anda sudah benar) ...
+  // --- Fungsi Mode Waypoint (Tetap Sama) ---
   void enterWaypointPickMode() {
     if (!state.isTracking) return;
-    print('[MapProvider] Entering Waypoint Pick Mode');
     state = state.copyWith(isPickingWaypoint: true);
   }
+
   void exitWaypointPickMode() {
-    print('[MapProvider] Exiting Waypoint Pick Mode');
     state = state.copyWith(isPickingWaypoint: false);
   }
 
-  // ... (Fungsi _startDurationTimer Anda sudah benar) ...
-  void _startDurationTimer() {
-    _durationTimer?.cancel();
-    _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!_stopwatch.isRunning) {
-        timer.cancel();
-      } else {
-        state = state.copyWith(liveDuration: _stopwatch.elapsed);
-      }
-    });
-  }
-
-  // ... (Fungsi _startPositionStreamListener Anda sudah benar) ...
-  void _startPositionStreamListener(int hikeId) {
-    _positionSubscription?.cancel();
-    _positionSubscription = null;
-    print('[MapProvider] Starting position stream for Hike ID: $hikeId');
-    _positionSubscription = ref
-        .read(gpsPositionProvider.stream)
-        .listen(
-          (positionData) async {
-            if (!state.isTracking || state.isPaused) return;
-            await _onNewPosition(positionData, hikeId);
-          },
-          onError: (error) {
-            print('[MapProvider] GPS stream error: $error');
-          },
-          onDone: () {
-            print('[MapProvider] GPS stream completed');
-          },
-        );
-  }
-
-  /// =======================================================
-  /// Helper _onNewPosition (UPGRADE PACE & STATISTIK)
-  /// =======================================================
-  Future<void> _onNewPosition(PositionData newData, int hikeId) async {
-    if (!state.isTracking || state.isPaused) return;
-
-    final routePointDao = ref.read(routePointDaoProvider);
-    final lastPos = state.lastPosition;
-
-    double newDistance = state.liveDistanceMeters;
-    double newElevationGain = state.liveElevationGainMeters;
-    double newElevationLoss = state.liveElevationLossMeters;
-    double newMaxSpeed = state.liveMaxSpeedKmh;
-    const GAIN_COMMIT_THRESHOLD = 1.5;
-    const LOSS_COMMIT_THRESHOLD = 1.5;
-    const RESET_THRESHOLD = 0.5;
-
-    // --- HITUNG PACE REALTIME ---
-    final double currentSpeedKmh = newData.speedKmh ?? 0.0;
-    // Cek kecepatan > 0.5 km/j (8.3 m/mnt) untuk menghindari pace tidak valid
-    final double currentPace = (currentSpeedKmh > 0.5) ? (60.0 / currentSpeedKmh) : 0.0;
-    // --- AKHIR HITUNG PACE ---
-
-    if (lastPos != null) {
-      newDistance += geo.Geolocator.distanceBetween(
-        lastPos.latitude,
-        lastPos.longitude,
-        newData.latitude,
-        newData.longitude,
-      );
-
-      // Logika Kecepatan Maksimal
-      newMaxSpeed = max(newMaxSpeed, currentSpeedKmh);
-
-      // Logika Elevasi
-      if (newData.altitude != null && lastPos.altitude != null) {
-        final elevationDiff = newData.altitude! - lastPos.altitude!;
-
-        if (elevationDiff > RESET_THRESHOLD) { // Tanjakan
-          _uncommittedElevationGain += elevationDiff;
-          if (_uncommittedElevationLoss >= LOSS_COMMIT_THRESHOLD) {
-            newElevationLoss += _uncommittedElevationLoss;
-          }
-          _uncommittedElevationLoss = 0.0;
-
-        } else if (elevationDiff < -RESET_THRESHOLD) { // Turunan
-          _uncommittedElevationLoss += elevationDiff.abs();
-          if (_uncommittedElevationGain >= GAIN_COMMIT_THRESHOLD) {
-            newElevationGain += _uncommittedElevationGain;
-          }
-          _uncommittedElevationGain = 0.0;
-        }
-      }
-    }
-
-    final routeCompanion = RoutePointsCompanion(
-      hikeId: Value(hikeId),
-      latitude: Value(newData.latitude),
-      longitude: Value(newData.longitude),
-      altitude: Value(newData.altitude),
-      speedKmh: Value(currentSpeedKmh), // Simpan kecepatan
-      timestamp: Value(newData.timestamp),
-    );
-
-    try {
-      await routePointDao.insertRoutePoint(routeCompanion);
-    } catch (e) {
-      print('[MapProvider] Failed to insert route point: $e');
-    }
-
-    state = state.copyWith(
-      lastPosition: newData,
-      livePoints: [
-        ...state.livePoints,
-        LatLng(newData.latitude, newData.longitude),
-      ],
-      liveDistanceMeters: newDistance,
-      liveElevationGainMeters: newElevationGain,
-      liveElevationLossMeters: newElevationLoss,
-      liveMaxSpeedKmh: newMaxSpeed,
-      livePaceMinPerKm: currentPace, // <-- Simpan PACE REALTIME
-    );
-  }
-
-  // ... (Fungsi _cleanupSubscriptions Anda sudah benar) ...
-  void _cleanupSubscriptions() {
-    print('[MapProvider] Cleaning up subscriptions...');
-    _positionSubscription?.cancel();
-    _positionSubscription = null;
-    _durationTimer?.cancel();
-    _durationTimer = null;
-    _stopwatch.stop();
-  }
-
-  // ... (Fungsi clearPersistentSession Anda sudah benar) ...
-  Future<void> clearPersistentSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('ongoing_hike_id');
-    await prefs.remove('ongoing_hike_paused');
-    _cleanupSubscriptions();
-    state = MapTrackingState.initial();
-    print('[MapProvider] Persistent session cleared');
-  }
-
-  // ... (Fungsi discardPausedSession Anda sudah benar) ...
+  // --- Fungsi Buang Sesi (Hampir Sama) ---
   Future<void> discardPausedSession() async {
     print('[MapProvider] Membuang sesi yang dijeda...');
     final prefs = await SharedPreferences.getInstance();
     final persistedHikeId = prefs.getInt('ongoing_hike_id');
+
     if (persistedHikeId != null) {
+      // KIRIM PERINTAH STOP (agar service juga bersih-bersih)
+      await prefs.setString('tracking_command', 'STOP');
+      await Future.delayed(const Duration(milliseconds: 500));
+
       final hikeDao = ref.read(hikeDaoProvider);
       await hikeDao.hardDeleteHike(persistedHikeId);
-      print('[MapProvider] Data Hike ID: $persistedHikeId telah di-hard-delete.');
-      await prefs.remove('ongoing_hike_id');
-      await prefs.remove('ongoing_hike_paused');
+      print(
+        '[MapProvider] Data Hike ID: $persistedHikeId telah di-hard-delete.',
+      );
     }
+
     _cleanupSubscriptions();
-    _stopwatch.reset();
     state = MapTrackingState.initial();
     print('[MapProvider] Sesi berhasil dibuang dan state di-reset.');
   }
 
-  // ... (Fungsi _calculateWaypointStats Anda sudah benar) ...
+  // (Fungsi _calculateWaypointStats tetap sama)
   Future<void> _calculateWaypointStats(int hikeId) async {
     final hikeDao = ref.read(hikeDaoProvider);
+
     final routePointDao = ref.read(routePointDaoProvider);
+
     final waypointDao = ref.read(hikeWaypointDaoProvider);
+
     final Hike? hike = await hikeDao.getHikeById(hikeId);
+
     if (hike == null) {
       print('[StatCalculator] Hike not found, aborting.');
+
       return;
     }
+
     final allWaypoints =
         await (waypointDao.select(waypointDao.hikeWaypoints)
               ..where((tbl) => tbl.hikeId.equals(hikeId))
               ..orderBy([(tbl) => OrderingTerm(expression: tbl.timestamp)]))
             .get();
+
     final allRoutePoints =
         await (routePointDao.select(routePointDao.routePoints)
               ..where((tbl) => tbl.hikeId.equals(hikeId))
               ..orderBy([(tbl) => OrderingTerm(expression: tbl.timestamp)]))
             .get();
+
     if (allWaypoints.isEmpty || allRoutePoints.isEmpty) {
       print(
         '[StatCalculator] No waypoints or route points, nothing to calculate.',
       );
+
       return;
     }
+
     DateTime lastTimestamp = hike.hikeDate;
+
     double cumulativeGain = 0.0;
+
     double cumulativeLoss = 0.0;
+
     const GAIN_COMMIT_THRESHOLD = 1.5;
+
     const LOSS_RESET_THRESHOLD = 0.5;
+
     for (final waypoint in allWaypoints) {
       final segmentRoutePoints = allRoutePoints
           .where(
@@ -648,50 +646,266 @@ class MapNotifier extends _$MapNotifier {
                 !p.timestamp.isAfter(waypoint.timestamp),
           )
           .toList();
+
       if (segmentRoutePoints.isNotEmpty) {
         double segmentGain = 0.0;
+
         double segmentLoss = 0.0;
+
         double uncommittedGain = 0.0;
+
         RoutePoint? lastSegPos;
+
         final lastPosBeforeSegment = allRoutePoints.lastWhere(
           (p) => !p.timestamp.isAfter(lastTimestamp),
+
           orElse: () => allRoutePoints.first,
         );
+
         lastSegPos = lastPosBeforeSegment;
+
         for (final currentSegPos in segmentRoutePoints) {
-           if (lastSegPos != null && 
-               currentSegPos.altitude != null && 
-               lastSegPos.altitude != null) {
-              final elevationDiff =
-                  currentSegPos.altitude! - lastSegPos.altitude!;
-              if (elevationDiff > 0) {
-                uncommittedGain += elevationDiff;
-              } else if (elevationDiff < -LOSS_RESET_THRESHOLD) {
-                if (uncommittedGain >= GAIN_COMMIT_THRESHOLD) {
-                  segmentGain += uncommittedGain;
-                }
-                uncommittedGain = 0.0;
-                segmentLoss += elevationDiff.abs();
+          if (lastSegPos != null &&
+              currentSegPos.altitude != null &&
+              lastSegPos.altitude != null) {
+            final elevationDiff =
+                currentSegPos.altitude! - lastSegPos.altitude!;
+
+            if (elevationDiff > 0) {
+              uncommittedGain += elevationDiff;
+            } else if (elevationDiff < -LOSS_RESET_THRESHOLD) {
+              if (uncommittedGain >= GAIN_COMMIT_THRESHOLD) {
+                segmentGain += uncommittedGain;
               }
-           }
-           lastSegPos = currentSegPos;
+
+              uncommittedGain = 0.0;
+
+              segmentLoss += elevationDiff.abs();
+            }
+          }
+
+          lastSegPos = currentSegPos;
         }
+
         if (uncommittedGain >= GAIN_COMMIT_THRESHOLD) {
-           segmentGain += uncommittedGain;
+          segmentGain += uncommittedGain;
         }
+
         cumulativeGain += segmentGain;
+
         cumulativeLoss += segmentLoss;
       }
+
       final companion = HikeWaypointsCompanion(
         id: Value(waypoint.id),
+
         elevationGainToHere: Value(cumulativeGain),
+
         elevationLossToHere: Value(cumulativeLoss),
       );
+
       await waypointDao.update(waypointDao.hikeWaypoints).replace(companion);
+
       print(
         '[StatCalculator] Waypoint ${waypoint.name}: Gain=${cumulativeGain.toStringAsFixed(1)}, Loss=${cumulativeLoss.toStringAsFixed(1)}',
       );
+
       lastTimestamp = waypoint.timestamp;
     }
+  }
+
+  /// =======================================================
+  /// Helper Internal (Baru & Diubah)
+  /// =======================================================
+
+  // --- FUNGSI BARU (Pembaca Buku Log) ---
+  void _startLiveStatsPoller() {
+  _liveStatsPoller?.cancel();
+  print('[MapProvider] Memulai Polling Data Live...');
+
+  _liveStatsPoller = Timer.periodic(const Duration(seconds: 1), (
+   timer,
+  ) async {
+   if (!state.isTracking || state.isPaused || state.currentHikeId == null) {
+    timer.cancel();
+    return;
+   }
+
+   try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload(); // Ambil data terbaru
+
+    // 1. Baca data STATISTIK dari Prefs (Ditulis oleh Service)
+    final liveDuration = prefs.getInt('live_duration_seconds');
+    final liveDistance = prefs.getDouble('live_distance_meters');
+
+    // 2. ⬇️ TAMBAHAN: Baca data PETA dari Database ⬇️
+    final routePointDao = ref.read(routePointDaoProvider);
+        // Kita ambil semua poin untuk hike ini
+        // (Note: Untuk optimasi di masa depan, bisa ambil poin 'terbaru' saja, 
+        // tapi untuk sekarang 'semua' lebih aman agar rute tidak putus)
+    final points = await routePointDao.getRoutePointsForHike(state.currentHikeId!);
+
+        // Konversi ke LatLng untuk UI
+        final List<LatLng> livePoints = points
+            .map((p) => LatLng(p.latitude, p.longitude))
+            .toList();
+        
+        // Ambil posisi terakhir dari list poin (lebih akurat drpd _lastGpsPosition lama)
+        final PositionData? lastPos = points.isNotEmpty 
+            ? PositionData(
+                latitude: points.last.latitude,
+                longitude: points.last.longitude,
+                altitude: points.last.altitude ?? 0,
+                speedKmh: points.last.speedKmh ?? 0,
+                timestamp: points.last.timestamp,
+              ) 
+            : _lastGpsPosition;
+            
+    final double currentSpeedKmh = lastPos?.speedKmh ?? 0.0;
+    final double currentPace = (currentSpeedKmh > 0.5)
+      ? (60.0 / currentSpeedKmh)
+      : 0.0;
+
+    // 3. Update UI dengan data LENGKAP
+    state = state.copyWith(
+     liveDuration: Duration(
+      seconds: liveDuration ?? state.liveDuration.inSeconds,
+     ),
+     liveDistanceMeters: liveDistance ?? state.liveDistanceMeters,
+          livePoints: livePoints, // <-- Update Garis Peta
+     livePaceMinPerKm: currentPace,
+     lastPosition: lastPos,      // <-- Update Blue Dot
+    );
+   } catch (e) {
+        // Database locked mungkin terjadi sesekali, aman diabaikan
+        // karena akan dicoba lagi detik berikutnya
+    // print('[MapProvider] Polling skip (db lock?): $e');
+   }
+  });
+ }
+
+  // --- HAPUS FUNGSI LAMA ---
+  // HAPUS: _listenToDatabaseUpdates
+  // HAPUS: _startPositionStreamListener
+  // HAPUS: _refreshLiveStatsFromDb (fungsinya pindah ke poller)
+
+  // UBAH: Fungsi ini sekarang hanya membersihkan poller
+  void _cleanupSubscriptions() {
+    print('[MapProvider] Cleaning up subscriptions...');
+    _liveStatsPoller?.cancel();
+    _liveStatsPoller = null;
+  }
+
+  // UBAH: Fungsi ini sekarang memuat data dari DB ke state
+  Future<void> _reloadStateFromDatabase(int hikeId) async {
+    print('[MapProvider] Memuat ulang state dari DB untuk Hike ID: $hikeId');
+    _liveStatsPoller?.cancel(); // Pastikan poller mati
+
+    try {
+      final routePointDao = ref.read(routePointDaoProvider);
+      final hikeDao = ref.read(hikeDaoProvider);
+
+      final hike = await hikeDao.getHikeById(hikeId);
+      final points = await routePointDao.getRoutePointsForHike(hikeId);
+
+      // Hitung stats poin (jarak, elevasi, dll)
+      _recalculateStatsFromPoints(points);
+
+      // Update state durasi (penting)
+      state = state.copyWith(
+        liveDuration: Duration(seconds: hike?.durationSeconds ?? 0),
+      );
+    } catch (e) {
+      print("[MapProvider] Gagal reload state: $e");
+      _recalculateStatsFromPoints([]);
+      state = state.copyWith(liveDuration: Duration.zero);
+    }
+  }
+
+  // FUNGSI INI TETAP SAMA (penting untuk reload)
+  void _recalculateStatsFromPoints(List<RoutePoint> points) {
+    if (points.isEmpty) {
+      state = state.copyWith(
+        livePoints: [],
+        liveDistanceMeters: 0,
+        liveElevationGainMeters: 0,
+        liveElevationLossMeters: 0,
+        livePaceMinPerKm: 0.0,
+      );
+      return;
+    }
+
+    double newDistance = 0.0;
+    double newElevationGain = 0.0;
+    double newElevationLoss = 0.0;
+    double newMaxSpeed = 0.0;
+    double uncommittedGain = 0.0;
+    double uncommittedLoss = 0.0;
+    const GAIN_COMMIT_THRESHOLD = 1.5;
+    const LOSS_COMMIT_THRESHOLD = 1.5;
+    const RESET_THRESHOLD = 0.5;
+    RoutePoint? lastPoint;
+
+    for (final point in points) {
+      if (lastPoint != null) {
+        newDistance += geo.Geolocator.distanceBetween(
+          lastPoint.latitude,
+          lastPoint.longitude,
+          point.latitude,
+          point.longitude,
+        );
+        if (point.altitude != null && lastPoint.altitude != null) {
+          final elevationDiff = point.altitude! - lastPoint.altitude!;
+          if (elevationDiff > RESET_THRESHOLD) {
+            uncommittedGain += elevationDiff;
+            if (uncommittedLoss >= LOSS_COMMIT_THRESHOLD)
+              newElevationLoss += uncommittedLoss;
+            uncommittedLoss = 0.0;
+          } else if (elevationDiff < -RESET_THRESHOLD) {
+            uncommittedLoss += elevationDiff.abs();
+            if (uncommittedGain >= GAIN_COMMIT_THRESHOLD)
+              newElevationGain += uncommittedGain;
+            uncommittedGain = 0.0;
+          }
+        }
+      }
+      newMaxSpeed = max(newMaxSpeed, point.speedKmh ?? 0.0);
+      lastPoint = point;
+    }
+
+    if (uncommittedGain >= GAIN_COMMIT_THRESHOLD)
+      newElevationGain += uncommittedGain;
+    if (uncommittedLoss >= LOSS_COMMIT_THRESHOLD)
+      newElevationLoss += uncommittedLoss;
+
+    final double currentSpeedKmh = lastPoint?.speedKmh ?? 0.0;
+    final double currentPace = (currentSpeedKmh > 0.5)
+        ? (60.0 / currentSpeedKmh)
+        : 0.0;
+
+    final List<LatLng> livePoints = points
+        .map((p) => LatLng(p.latitude, p.longitude))
+        .toList();
+
+    final PositionData? lastPosition = (lastPoint != null)
+        ? PositionData(
+            latitude: lastPoint.latitude,
+            longitude: lastPoint.longitude,
+            altitude: lastPoint.altitude ?? 0.0,
+            speedKmh: lastPoint.speedKmh ?? 0.0,
+            timestamp: lastPoint.timestamp,
+          )
+        : null;
+
+    state = state.copyWith(
+      livePoints: livePoints,
+      lastPosition: lastPosition,
+      liveDistanceMeters: newDistance,
+      liveElevationGainMeters: newElevationGain,
+      liveElevationLossMeters: newElevationLoss,
+      liveMaxSpeedKmh: newMaxSpeed,
+      livePaceMinPerKm: currentPace,
+    );
   }
 }

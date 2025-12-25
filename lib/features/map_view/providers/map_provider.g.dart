@@ -6,9 +6,9 @@ part of 'map_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$mapNotifierHash() => r'5d34ff5cd0afeefb6f702330cf68b5b69ef05461';
+String _$mapNotifierHash() => r'e57a4ba7ebfb0ee9ea4e802f04a555b646a9adb6';
 
-/// "OTAK" DARI FITUR PELACAKAN
+/// "OTAK" DARI FITUR PELACAKAN (VERSI REFAKTOR)
 ///
 /// Copied from [MapNotifier].
 @ProviderFor(MapNotifier)

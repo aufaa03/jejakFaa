@@ -8,9 +8,7 @@ part of 'gps_service.dart';
 
 String _$gpsServiceHash() => r'320a21a9cc342266f6d431c82a2e7e0cf3823096';
 
-/// Provider untuk GpsService (singleton)
-///
-/// Copied from [gpsService].
+/// See also [gpsService].
 @ProviderFor(gpsService)
 final gpsServiceProvider = AutoDisposeProvider<GpsService>.internal(
   gpsService,
@@ -27,10 +25,7 @@ final gpsServiceProvider = AutoDisposeProvider<GpsService>.internal(
 typedef GpsServiceRef = AutoDisposeProviderRef<GpsService>;
 String _$gpsPositionHash() => r'24d069adee18f528a0f18b1987f37fd05e8b3a03';
 
-/// Provider untuk stream lokasi real-time
-/// (Nama ini dipanggil oleh map_provider.dart)
-///
-/// Copied from [gpsPosition].
+/// See also [gpsPosition].
 @ProviderFor(gpsPosition)
 final gpsPositionProvider = AutoDisposeStreamProvider<PositionData>.internal(
   gpsPosition,
@@ -48,10 +43,7 @@ typedef GpsPositionRef = AutoDisposeStreamProviderRef<PositionData>;
 String _$currentGpsLocationHash() =>
     r'a958d7980ae226a8a8a9d2ff2ea08d59c2257cfb';
 
-/// Provider untuk mendapatkan lokasi satu kali (inisial peta)
-/// (Nama ini dipanggil oleh map_page.dart)
-///
-/// Copied from [currentGpsLocation].
+/// See also [currentGpsLocation].
 @ProviderFor(currentGpsLocation)
 final currentGpsLocationProvider =
     AutoDisposeFutureProvider<PositionData?>.internal(

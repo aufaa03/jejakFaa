@@ -1,29 +1,49 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform;
 import 'package:geolocator/geolocator.dart';
 import 'package:jejak_faa_new/data/models/location_models.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:geolocator_android/geolocator_android.dart';
 import 'package:geolocator_apple/geolocator_apple.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 part 'gps_service.g.dart';
 
-/// Service GPS - Tracking akurat seperti Strava
+LocationSettings getGpsLocationSettings() {
+  LocationSettings locationSettings;
+
+  if (defaultTargetPlatform == TargetPlatform.android) {
+    locationSettings = AndroidSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 5,
+      intervalDuration: const Duration(seconds: 5),
+    );
+  } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+    locationSettings = AppleSettings(
+      accuracy: LocationAccuracy.best,
+      activityType: ActivityType.fitness,
+      distanceFilter: 5,
+      showBackgroundLocationIndicator: true,
+    );
+  } else {
+    locationSettings = const LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 5,
+    );
+  }
+  return locationSettings;
+}
+
 class GpsService {
-  
-  /// Meminta dan memvalidasi izin lokasi dari pengguna.
   Future<bool> _handleLocationPermission() async {
     bool serviceEnabled;
     LocationPermission permission;
-
-    // 1. Cek apakah layanan lokasi HP aktif
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       print("[GpsService] Layanan lokasi nonaktif.");
       return false;
     }
-
-    // 2. Cek izin aplikasi
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -32,26 +52,32 @@ class GpsService {
         return false;
       }
     }
-    
     if (permission == LocationPermission.deniedForever) {
       print("[GpsService] Izin lokasi ditolak permanen.");
       return false;
     }
-
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final PermissionStatus notificationStatus = await Permission.notification
+          .request();
+      if (notificationStatus.isDenied ||
+          notificationStatus.isPermanentlyDenied) {
+        print("[GpsService] Izin notifikasi ditolak.");
+      }
+    }
     return true;
   }
 
-  /// Mendapatkan satu kali lokasi saat ini (untuk inisial peta).
   Future<PositionData?> getCurrentLocation() async {
     final hasPermission = await _handleLocationPermission();
     if (!hasPermission) return null;
-
     try {
       print('[GpsService] Requesting initial position...');
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      print('[GpsService] Got initial position: ${position.latitude}, ${position.longitude}');
+      print(
+        '[GpsService] Got initial position: ${position.latitude}, ${position.longitude}',
+      );
       return PositionData.fromGeolocatorPosition(position);
     } catch (e) {
       print("[GpsService] Error mendapat lokasi: $e");
@@ -59,7 +85,6 @@ class GpsService {
     }
   }
 
-  /// Mendapatkan STREAM lokasi (untuk pelacakan live real-time).
   Stream<PositionData> getPositionStream() async* {
     final hasPermission = await _handleLocationPermission();
     if (!hasPermission) {
@@ -67,38 +92,9 @@ class GpsService {
       return;
     }
 
-    LocationSettings locationSettings;
-
-    // --- SETUP PLATFORM-SPECIFIC ---
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      locationSettings = AndroidSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 1, // Update jika bergerak 1 meter
-        intervalDuration: const Duration(seconds: 1), // ATAU setiap 1 detik
-        foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: "Jejak FAA",
-          notificationText: "Pelacakan sedang berlangsung...",
-          notificationChannelName: "Jejak FAA Location",
-          enableWakeLock: true, 
-          setOngoing: true, 
-        ),
-      );
-    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-      locationSettings = AppleSettings(
-        accuracy: LocationAccuracy.best,
-        activityType: ActivityType.fitness,
-        distanceFilter: 1,
-        showBackgroundLocationIndicator: true, 
-      );
-    } else {
-      locationSettings = const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 1,
-      );
-    }
+    final locationSettings = getGpsLocationSettings();
 
     try {
-      // (Menghapus 'getCurrentLocation' dari sini, biarkan provider 'currentGpsLocation' menanganinya)
       print('[GpsService] Starting position stream...');
       await for (final position in Geolocator.getPositionStream(
         locationSettings: locationSettings,
@@ -112,27 +108,19 @@ class GpsService {
   }
 }
 
-// --- Riverpod Providers ---
-
-/// Provider untuk GpsService (singleton)
 @riverpod
 GpsService gpsService(GpsServiceRef ref) {
   return GpsService();
 }
 
-/// Provider untuk stream lokasi real-time
-/// (Nama ini dipanggil oleh map_provider.dart)
 @riverpod
 Stream<PositionData> gpsPosition(GpsPositionRef ref) {
   final gpsService = ref.watch(gpsServiceProvider);
   return gpsService.getPositionStream();
 }
 
-/// Provider untuk mendapatkan lokasi satu kali (inisial peta)
-/// (Nama ini dipanggil oleh map_page.dart)
 @riverpod
 Future<PositionData?> currentGpsLocation(CurrentGpsLocationRef ref) async {
   final gpsService = ref.read(gpsServiceProvider);
   return gpsService.getCurrentLocation();
 }
-

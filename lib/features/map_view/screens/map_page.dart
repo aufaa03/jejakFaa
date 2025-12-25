@@ -6,6 +6,8 @@ import 'package:jejak_faa_new/core/services/gps_service.dart' as gps;
 import 'package:jejak_faa_new/data/local_db/database.dart';
 import 'package:jejak_faa_new/data/models/sync_status.dart';
 import 'package:jejak_faa_new/features/map_view/providers/map_provider.dart';
+import 'package:jejak_faa_new/features/map_view/providers/weather_provider.dart';
+import 'package:jejak_faa_new/main.dart';
 import 'package:latlong2/latlong.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
@@ -18,14 +20,20 @@ import 'package:jejak_faa_new/data/models/location_models.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'dart:math';
+import 'package:jejak_faa_new/features/map_view/widgets/weather_widget.dart';
+import 'package:flutter_map_cache/flutter_map_cache.dart';
+import 'package:jejak_faa_new/features/hike_log/providers/route_points_provider.dart';
+import 'package:geolocator/geolocator.dart' as geo;
+import 'package:intl/intl.dart';
+
 part 'map_page.g.dart';
 
 @riverpod
 Stream<double?> compassHeading(CompassHeadingRef ref) {
-  // Pastikan kita handle jika stream-nya null atau error
   return FlutterCompass.events?.map((event) => event.heading) ??
       Stream.value(null);
 }
+
 class MapPage extends ConsumerStatefulWidget {
   const MapPage({super.key});
 
@@ -37,6 +45,15 @@ class _MapPageState extends ConsumerState<MapPage>
     with TickerProviderStateMixin {
   static final _mapController = MapController();
   late AnimationController _animationController;
+
+  // Warna sesuai palet Jejak Faa
+  static const Color primaryColor = Color(0xFF1A535C);
+  static const Color backgroundColor = Color(0xFFF7F7F2);
+  static const Color cardColor = Color(0xFFFFFFFF);
+  static const Color accentColor = Color(0xFFE07A5F);
+  static const Color textPrimary = Color(0xFF2D3748);
+  static const Color textSecondary = Color(0xFF718096);
+  static const Color textLight = Color(0xFFA0AEC0);
 
   @override
   void initState() {
@@ -56,13 +73,9 @@ class _MapPageState extends ConsumerState<MapPage>
     super.dispose();
   }
 
-  /// Animasi smooth pergerakan map
   void _animatedMapMove(LatLng destLocation) {
-    // Dapatkan posisi saat ini
     final startLatLng = _mapController.camera.center;
     final startZoom = _mapController.camera.zoom;
-
-    // Buat tweens untuk latitude, longitude, dan zoom
     final latTween = Tween<double>(
       begin: startLatLng.latitude,
       end: destLocation.latitude,
@@ -72,85 +85,128 @@ class _MapPageState extends ConsumerState<MapPage>
       end: destLocation.longitude,
     );
     final zoomTween = Tween<double>(begin: startZoom, end: startZoom);
-
-    // Buat animation dengan curve
     final Animation<double> animation = CurvedAnimation(
       parent: _animationController,
       curve: Curves.easeInOut,
     );
-
-    // Update map setiap frame
     animation.addListener(() {
       _mapController.move(
         LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
         zoomTween.evaluate(animation),
       );
     });
-
-    // Cleanup setelah animasi selesai
     animation.addStatusListener((status) {
       if (status == AnimationStatus.completed ||
-          status == AnimationStatus.dismissed) {
-        // Optional: reset untuk animasi berikutnya
-      }
+          status == AnimationStatus.dismissed) {}
     });
-
-    // Mulai animasi dari awal
     _animationController.forward(from: 0.0);
   }
 
-  /// Pengecekan proaktif saat halaman dibuka
   Future<void> _checkSessionStatus() async {
     if (!mounted) return;
     final notifier = ref.read(mapNotifierProvider.notifier);
     final int? ongoingId = await notifier.pausedHikeId;
     if (ongoingId != null) {
-      print('[MapPage] Sesi $ongoingId ditemukan. Menampilkan dialog...');
       _showResumeDialog(ref);
       return;
     }
   }
 
-  /// Menampilkan dialog "Lanjutkan atau Buang"
   void _showResumeDialog(WidgetRef ref) {
     if (!mounted) return;
     final notifier = ref.read(mapNotifierProvider.notifier);
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Sesi Ditemukan'),
-        content: const Text(
-          'Anda memiliki sesi pendakian yang belum selesai. Apa yang ingin Anda lakukan?',
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: cardColor,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFC107).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                child: Icon(
+                  Icons.pause_circle_outline_rounded,
+                  size: 32,
+                  color: const Color(0xFFFFC107),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Sesi Ditemukan',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Anda memiliki sesi pendakian yang belum selesai',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        Navigator.of(ctx).pop();
+                        await notifier.discardPausedSession();
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: accentColor,
+                        side: BorderSide(color: accentColor),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Buang Sesi'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        Navigator.of(ctx).pop();
+                        final prefs = await SharedPreferences.getInstance();
+                        final bool isPaused =
+                            prefs.getBool('ongoing_hike_paused') ?? false;
+                        if (isPaused) {
+                          await notifier.resumeTracking();
+                        } else {
+                          await notifier.startTracking();
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Lanjutkan'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              await notifier.discardPausedSession();
-            },
-            child: const Text(
-              'Buang Sesi',
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              final prefs = await SharedPreferences.getInstance();
-              final bool isPaused =
-                  prefs.getBool('ongoing_hike_paused') ?? false;
-              if (isPaused) {
-                print("[MapPage] Melanjutkan sesi yang dijeda...");
-                await notifier.resumeTracking();
-              } else {
-                print("[MapPage] Melanjutkan sesi yang di-swipe...");
-                await notifier.startTracking();
-              }
-            },
-            child: const Text('Lanjutkan Sesi'),
-          ),
-        ],
       ),
     );
   }
@@ -159,11 +215,24 @@ class _MapPageState extends ConsumerState<MapPage>
   Widget build(BuildContext context) {
     final state = ref.watch(mapNotifierProvider);
     final notifier = ref.read(mapNotifierProvider.notifier);
-    final initialGpsAsync = ref.watch(gps.currentGpsLocationProvider);
-    // Tonton stream kompas. Kita beri nilai default 0.0 jika null
     final heading = ref.watch(compassHeadingProvider).value ?? 0.0;
-  print( '[MapPage] COMPAS  : $heading');
-    // --- PERBAIKAN: LISTENER SMOOTH ANIMATION ---
+
+    final initialGpsAsync = ref.watch(gps.currentGpsLocationProvider);
+    ref.listen<AsyncValue<PositionData?>>(gps.currentGpsLocationProvider, (
+      previous,
+      next,
+    ) {
+      final position = next.valueOrNull;
+      if (position != null) {
+        final weatherState = ref.read(weatherProvider);
+        if (!weatherState.isValid) {
+          ref
+              .read(weatherProvider.notifier)
+              .fetchWeather(position.latitude, position.longitude);
+        }
+      }
+    });
+
     ref.listen<PositionData?>(
       mapNotifierProvider.select((s) => s.lastPosition),
       (PositionData? prev, PositionData? next) {
@@ -174,117 +243,244 @@ class _MapPageState extends ConsumerState<MapPage>
       },
     );
 
+    ref.watch(routePointsProvider(state.currentHikeId ?? 0));
+
     return Scaffold(
+      backgroundColor: backgroundColor,
       body: Stack(
         children: [
-          // --- LAPISAN 1: PETA (PALING BAWAH) ---
+          // Map Layer
           initialGpsAsync.when(
-            loading: () => const Scaffold(
+            loading: () => Scaffold(
+              backgroundColor: backgroundColor,
               body: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation(Colors.blue),
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(40),
+                      ),
+                      child: Icon(
+                        Icons.gps_fixed_rounded,
+                        size: 40,
+                        color: primaryColor,
+                      ),
                     ),
-                    SizedBox(height: 16),
-                    Text('Mencari sinyal GPS...'),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Mencari Sinyal GPS',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Menunggu koneksi GPS stabil...',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: textSecondary,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
             error: (err, stack) => Scaffold(
+              backgroundColor: backgroundColor,
               body: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.location_off, size: 48, color: Colors.red),
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: accentColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(40),
+                      ),
+                      child: Icon(
+                        Icons.location_off_rounded,
+                        size: 40,
+                        color: accentColor,
+                      ),
+                    ),
                     const SizedBox(height: 16),
-                    Text('Error GPS: $err'),
+                    Text(
+                      'GPS Tidak Tersedia',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 40),
+                      child: Text(
+                        err.toString(),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: textSecondary,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
             data: (initialPosition) {
               if (initialPosition == null) {
-                return const Center(
-                  child: Text('Gagal mendapatkan lokasi awal GPS.'),
+                return Center(
+                  child: Text(
+                    'Gagal mendapatkan lokasi awal GPS.',
+                    style: TextStyle(color: textSecondary),
+                  ),
                 );
               }
 
-              final liveGpsAsync = ref.watch(gps.gpsPositionProvider);
-              final currentPosition =
-                  liveGpsAsync.valueOrNull ?? initialPosition;
-              final blueDotCenter = LatLng(
-                currentPosition.latitude,
-                currentPosition.longitude,
-              );
+              final blueDotCenter = state.lastPosition != null
+                  ? LatLng(
+                      state.lastPosition!.latitude,
+                      state.lastPosition!.longitude,
+                    )
+                  : LatLng(initialPosition.latitude, initialPosition.longitude);
 
               return FlutterMap(
                 mapController: _mapController,
                 options: MapOptions(
-                  initialCenter: LatLng(
-                    initialPosition.latitude,
-                    initialPosition.longitude,
-                  ),
+                  initialCenter: blueDotCenter,
                   initialZoom: 17.0,
-                  onPositionChanged: (position, hasGesture) {
-                    // TODO: Tambahkan logika unlock camera jika hasGesture == true
-                  },
+                  onPositionChanged: (position, hasGesture) {},
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'com.example.jejak_faa_new',
+                    tileProvider: CachedTileProvider(
+                      store: globalCacheStore,
+                      maxStale: const Duration(days: 30),
+                    ),
                   ),
-
-                  // Polyline (Rute)
                   if (state.livePoints.isNotEmpty)
                     PolylineLayer(
                       polylines: [
                         Polyline(
                           points: state.livePoints,
-                          color: Colors.blue.withOpacity(0.8),
+                          color: primaryColor,
                           strokeWidth: 6,
                         ),
                       ],
                     ),
+                  Builder(
+                    builder: (context) {
+                      final List<Marker> allMarkers = [];
 
-                  // Marker Waypoint (POI)
-                  if (state.liveWaypoints.isNotEmpty)
-                    MarkerLayer(
-                      markers: state.liveWaypoints.map((waypoint) {
-                        return Marker(
-                          width: 40,
-                          height: 40,
-                          point: LatLng(waypoint.latitude, waypoint.longitude),
-                          child: Tooltip(
-                            message: waypoint.name,
-                            child: Icon(
-                              _getIconForCategory(waypoint.category),
-                              color: Colors.purple.shade700,
-                              size: 35,
+                      allMarkers.addAll(
+                        state.liveWaypoints.map((waypoint) {
+                          return Marker(
+                            width: 48,
+                            height: 48,
+                            point: LatLng(
+                              waypoint.latitude,
+                              waypoint.longitude,
+                            ),
+                            child: Tooltip(
+                              message: waypoint.name,
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: cardColor,
+                                  borderRadius: BorderRadius.circular(24),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.2),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  _getIconForCategory(waypoint.category),
+                                  color: primaryColor,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      );
+
+                      if (state.livePoints.isNotEmpty) {
+                        allMarkers.add(
+                          Marker(
+                            width: 48,
+                            height: 48,
+                            point: state.livePoints.first,
+                            alignment: Alignment.bottomCenter,
+                            child: Tooltip(
+                              message: 'Titik Mulai',
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF4ECDC4),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF4ECDC4).withOpacity(0.5),
+                                      blurRadius: 8,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.flag_rounded,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
                             ),
                           ),
                         );
-                      }).toList(),
-                    ),
+                      }
 
-                  // Marker Lokasi Live (Titik Biru)
+                      if (allMarkers.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return MarkerLayer(markers: allMarkers);
+                    },
+                  ),
                   MarkerLayer(
                     markers: [
                       Marker(
-                        width: 30,
-                        height: 30,
+                        width: 48,
+                        height: 48,
                         point: blueDotCenter,
-                        child: Transform.rotate(
-                          angle: (heading * (pi / 180)),
-                          // --- GANTI CONTAINER DENGAN ICON INI ---
-                          child: const Icon(
-                            Icons.navigation, // Ikon panah navigasi
-                            color: Colors.blue,
-                            size: 28.0,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: cardColor,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                blurRadius: 8,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: Transform.rotate(
+                            angle: (heading * (pi / 180)),
+                            child: Icon(
+                              Icons.navigation_rounded,
+                              color: primaryColor,
+                              size: 24,
+                            ),
                           ),
                         ),
                       ),
@@ -295,16 +491,30 @@ class _MapPageState extends ConsumerState<MapPage>
             },
           ),
 
-          // --- LAPISAN 2 & 3 (UI) ---
+          // UI Layers
           if (state.isPickingWaypoint)
             Center(
               child: IgnorePointer(
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 50.0),
-                  child: Icon(
-                    Icons.location_pin,
-                    size: 50,
-                    color: Colors.red.shade700,
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 12,
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.location_pin,
+                      size: 36,
+                      color: accentColor,
+                    ),
                   ),
                 ),
               ),
@@ -314,6 +524,8 @@ class _MapPageState extends ConsumerState<MapPage>
             _buildPickingUI(context, ref, notifier)
           else
             _buildTrackingUI(context, ref, state, notifier),
+
+          if (!state.isPickingWaypoint) const WeatherWidget(),
         ],
       ),
     );
@@ -328,14 +540,26 @@ class _MapPageState extends ConsumerState<MapPage>
       child: Stack(
         children: [
           Positioned(
-            top: 50,
+            top: 60,
             left: 16,
-            child: IconButton.filled(
-              style: IconButton.styleFrom(backgroundColor: Colors.white),
-              icon: const Icon(Icons.close, color: Colors.black),
-              onPressed: () {
-                notifier.exitWaypointPickMode();
-              },
+            child: Container(
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: IconButton(
+                icon: Icon(Icons.close_rounded, color: primaryColor),
+                onPressed: () {
+                  notifier.exitWaypointPickMode();
+                },
+              ),
             ),
           ),
           Positioned(
@@ -345,24 +569,46 @@ class _MapPageState extends ConsumerState<MapPage>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Card(
-                  elevation: 8,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Text(
-                      'Geser peta untuk memposisikan pin',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        color: primaryColor,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Geser peta untuk memposisikan pin',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
-                  child: FloatingActionButton.extended(
-                    heroTag: 'save_pick',
+                  child: ElevatedButton.icon(
                     onPressed: () {
-                      final LatLng pickedLocation =
-                          _mapController.camera.center;
+                      final LatLng pickedLocation = _mapController.camera.center;
                       _showAddWaypointDialog(
                         context,
                         ref,
@@ -371,11 +617,15 @@ class _MapPageState extends ConsumerState<MapPage>
                       );
                       notifier.exitWaypointPickMode();
                     },
-                    backgroundColor: Colors.blueAccent,
-                    icon: const Icon(Icons.check, color: Colors.white),
-                    label: const Text(
-                      'TANDAI DI SINI',
-                      style: TextStyle(color: Colors.white),
+                    icon: const Icon(Icons.check_rounded, size: 20),
+                    label: const Text('Tandai di Sini'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
@@ -396,21 +646,16 @@ class _MapPageState extends ConsumerState<MapPage>
     return Positioned.fill(
       child: Stack(
         children: [
-          Positioned(
-            top: 50,
-            left: 16,
-            child: IconButton.filled(
-              style: IconButton.styleFrom(backgroundColor: Colors.white),
-              icon: const Icon(Icons.close, color: Colors.black),
-              onPressed: () {
-                if (state.isTracking && !state.isPaused) {
-                  _showExitConfirmationDialog(context);
-                } else {
-                  context.go('/home');
-                }
-              },
+          // Stats Dashboard
+          if (state.isTracking)
+            Positioned(
+              top: 60,
+              left: 16,
+              right: 16,
+              child: _buildLiveStatsDashboard(context, state),
             ),
-          ),
+
+          // Control Buttons
           Positioned(
             bottom: 30,
             left: 16,
@@ -418,15 +663,14 @@ class _MapPageState extends ConsumerState<MapPage>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (state.isTracking) _buildLiveStatsDashboard(context, state),
-                const SizedBox(height: 20),
-
                 if (state.isTracking)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      FloatingActionButton(
-                        heroTag: 'poi_button',
+                      _buildControlButton(
+                        icon: Icons.location_pin,
+                        label: 'POI',
+                        color: primaryColor,
                         onPressed: state.isPaused
                             ? null
                             : () {
@@ -436,13 +680,14 @@ class _MapPageState extends ConsumerState<MapPage>
                                   notifier,
                                 );
                               },
-                        backgroundColor: state.isPaused
-                            ? Colors.grey
-                            : Colors.blueAccent,
-                        child: const Icon(Icons.location_pin),
+                        isDisabled: state.isPaused,
                       ),
-                      FloatingActionButton(
-                        heroTag: 'pause_button',
+                      _buildControlButton(
+                        icon: state.isPaused ? Icons.play_arrow : Icons.pause,
+                        label: state.isPaused ? 'Lanjut' : 'Jeda',
+                        color: state.isPaused
+                            ? const Color(0xFF4ECDC4)
+                            : const Color(0xFFFFC107),
                         onPressed: () {
                           if (state.isPaused) {
                             notifier.resumeTracking();
@@ -450,16 +695,11 @@ class _MapPageState extends ConsumerState<MapPage>
                             notifier.pauseTracking();
                           }
                         },
-                        backgroundColor: state.isPaused
-                            ? Colors.orange
-                            : Colors.grey[700],
-                        child: Icon(
-                          state.isPaused ? Icons.play_arrow : Icons.pause,
-                        ),
                       ),
-                      FloatingActionButton.large(
-                        heroTag: 'stop_button',
-                        backgroundColor: Colors.red,
+                      _buildControlButton(
+                        icon: Icons.stop,
+                        label: 'Selesai',
+                        color: accentColor,
                         onPressed: () async {
                           try {
                             final Hike? finishedHike = await notifier
@@ -473,20 +713,24 @@ class _MapPageState extends ConsumerState<MapPage>
                           } catch (e) {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Error: $e')),
+                                SnackBar(
+                                  content: Text('Error: $e'),
+                                  backgroundColor: accentColor,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12)),
+                                ),
                               );
                             }
                           }
                         },
-                        child: const Text('SELESAI'),
                       ),
                     ],
                   )
                 else if (!state.isTracking && !state.isPickingWaypoint)
                   SizedBox(
                     width: double.infinity,
-                    child: FloatingActionButton.large(
-                      heroTag: 'start_button',
+                    child: ElevatedButton.icon(
                       onPressed: () async {
                         try {
                           await notifier.startTracking();
@@ -495,13 +739,25 @@ class _MapPageState extends ConsumerState<MapPage>
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text('Error: $e'),
-                                backgroundColor: Colors.red,
+                                backgroundColor: accentColor,
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
                               ),
                             );
                           }
                         }
                       },
-                      child: const Text('MULAI TRACKING'),
+                      icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                      label: const Text('Mulai Tracking'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -509,6 +765,145 @@ class _MapPageState extends ConsumerState<MapPage>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildControlButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback? onPressed,
+    bool isDisabled = false,
+  }) {
+    return Column(
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: isDisabled ? textLight : color,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: IconButton(
+            icon: Icon(icon, color: Colors.white),
+            onPressed: isDisabled ? null : onPressed,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLiveStatsDashboard(
+    BuildContext context,
+    MapTrackingState state,
+  ) {
+    final duration = state.liveDuration;
+    final hours = duration.inHours.toString().padLeft(2, '0');
+    final minutes = (duration.inMinutes % 60).toString().padLeft(2, '0');
+    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
+
+    final String altitude =
+        state.lastPosition?.altitude.toStringAsFixed(0) ?? '--';
+    final double distanceKm = state.liveDistanceMeters / 1000.0;
+    final double pace = state.livePaceMinPerKm;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatItem(
+            value: distanceKm.toStringAsFixed(2),
+            label: 'KM',
+            icon: Icons.terrain_rounded,
+            color: primaryColor,
+          ),
+          _buildStatItem(
+            value: '$hours:$minutes:$seconds',
+            label: 'WAKTU',
+            icon: Icons.timer_rounded,
+            color: const Color(0xFF4ECDC4),
+          ),
+          _buildStatItem(
+            value: _formatPace(pace),
+            label: 'PACE',
+            icon: Icons.speed_rounded,
+            color: const Color(0xFFFFC107),
+          ),
+          _buildStatItem(
+            value: altitude,
+            label: 'MDPL',
+            icon: Icons.height_rounded,
+            color: accentColor,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem({
+    required String value,
+    required String label,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Column(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: textPrimary,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+            color: textSecondary,
+          ),
+        ),
+      ],
     );
   }
 
@@ -520,59 +915,6 @@ class _MapPageState extends ConsumerState<MapPage>
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
-  Widget _buildLiveStatsDashboard(
-    BuildContext context,
-    MapTrackingState state,
-  ) {
-    final duration = state.liveDuration;
-    final hours = duration.inHours.toString().padLeft(2, '0');
-    final minutes = (duration.inMinutes % 60).toString().padLeft(2, '0');
-    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
-    final String altitude =
-        state.lastPosition?.altitude?.toStringAsFixed(0) ?? '--';
-
-    return Card(
-      elevation: 8,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _buildStatColumn(
-              context,
-              (state.liveDistanceMeters / 1000).toStringAsFixed(2),
-              'km',
-            ),
-            _buildStatColumn(context, '$hours:$minutes:$seconds', 'Waktu'),
-            _buildStatColumn(
-              context,
-              _formatPace(state.livePaceMinPerKm),
-              'mnt/km',
-            ),
-            _buildStatColumn(context, altitude, 'mdpl'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatColumn(BuildContext context, String value, String label) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          value,
-          style: Theme.of(
-            context,
-          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 4),
-        Text(label, style: Theme.of(context).textTheme.bodySmall),
-      ],
-    );
-  }
-
   void _showWaypointSourceDialog(
     BuildContext context,
     WidgetRef ref,
@@ -580,36 +922,127 @@ class _MapPageState extends ConsumerState<MapPage>
   ) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      builder: (ctx) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.my_location, color: Colors.blue),
-            title: const Text('Tambah Lokasi Saat Ini'),
-            subtitle: const Text('Menandai posisi Anda sekarang'),
-            onTap: () {
-              Navigator.of(ctx).pop();
-              _showAddWaypointDialog(
-                context,
-                ref,
-                notifier,
-                tappedLatLng: null,
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.push_pin, color: Colors.red),
-            title: const Text('Pilih dari Peta'),
-            subtitle: const Text('Menandai titik di peta secara manual'),
-            onTap: () {
-              Navigator.of(ctx).pop();
-              notifier.enterWaypointPickMode();
-            },
-          ),
-          const SizedBox(height: 20),
-        ],
+      backgroundColor: cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Handle bar
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: textLight.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                Text(
+                  'Tambah Waypoint',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                
+                _buildWaypointOption(
+                  icon: Icons.my_location,
+                  title: 'Lokasi Saat Ini',
+                  subtitle: 'Tandai posisi Anda sekarang',
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _showAddWaypointDialog(
+                      context,
+                      ref,
+                      notifier,
+                      tappedLatLng: null,
+                    );
+                  },
+                ),
+                
+                _buildWaypointOption(
+                  icon: Icons.push_pin,
+                  title: 'Pilih dari Peta',
+                  subtitle: 'Tandai titik di peta secara manual',
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    notifier.enterWaypointPickMode();
+                  },
+                ),
+                
+                const SizedBox(height: 8),
+                
+                // Cancel button
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: textSecondary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(color: textLight.withOpacity(0.3)),
+                    ),
+                    child: const Text('Batal'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildWaypointOption({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: primaryColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, color: primaryColor, size: 24),
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: textPrimary,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(
+          fontSize: 14,
+          color: textSecondary,
+        ),
+      ),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        color: textLight,
+        size: 20,
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+      onTap: onTap,
     );
   }
 
@@ -640,32 +1073,83 @@ class _MapPageState extends ConsumerState<MapPage>
           builder: (dialogContext, setDialogState) {
             Future<void> _pickImage() async {
               final imagePicker = ImagePicker();
-              final ImageSource?
-              source = await showModalBottomSheet<ImageSource>(
+              final ImageSource? source = await showModalBottomSheet<ImageSource>(
                 context: context,
-                builder: (bottomSheetCtx) => Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.camera_alt),
-                      title: const Text('Ambil Foto (Kamera)'),
-                      onTap: () =>
-                          Navigator.of(bottomSheetCtx).pop(ImageSource.camera),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.photo_library),
-                      title: const Text('Pilih dari Galeri'),
-                      onTap: () =>
-                          Navigator.of(bottomSheetCtx).pop(ImageSource.gallery),
-                    ),
-                  ],
+                backgroundColor: cardColor,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
+                builder: (bottomSheetCtx) {
+                  return SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Handle bar
+                          Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: textLight.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          Text(
+                            'Pilih Sumber Foto',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          
+                          _buildImageSourceOption(
+                            icon: Icons.camera_alt_rounded,
+                            title: 'Ambil Foto',
+                            subtitle: 'Gunakan kamera',
+                            onTap: () => Navigator.of(bottomSheetCtx).pop(ImageSource.camera),
+                          ),
+                          
+                          _buildImageSourceOption(
+                            icon: Icons.photo_library_rounded,
+                            title: 'Pilih dari Galeri',
+                            subtitle: 'Pilih foto yang sudah ada',
+                            onTap: () => Navigator.of(bottomSheetCtx).pop(ImageSource.gallery),
+                          ),
+                          
+                          const SizedBox(height: 8),
+                          
+                          // Cancel button
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(bottomSheetCtx).pop(),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: textSecondary,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                side: BorderSide(color: textLight.withOpacity(0.3)),
+                              ),
+                              child: const Text('Batal'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               );
               if (source == null) return;
               try {
                 final XFile? imageFile = await imagePicker.pickImage(
                   source: source,
-                  imageQuality: 80,
+                  imageQuality: 85,
                 );
                 if (imageFile == null) return;
                 setDialogState(() {
@@ -676,7 +1160,9 @@ class _MapPageState extends ConsumerState<MapPage>
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('Gagal mengambil gambar: $e'),
-                      backgroundColor: Colors.red,
+                      backgroundColor: accentColor,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                   );
                 }
@@ -690,12 +1176,8 @@ class _MapPageState extends ConsumerState<MapPage>
             ) async {
               final supabase = Supabase.instance.client;
               final file = File(imageFile.path);
-              final fileExtension = imageFile.path
-                  .split('.')
-                  .last
-                  .toLowerCase();
-              final fileName =
-                  '${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+              final fileExtension = imageFile.path.split('.').last.toLowerCase();
+              final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
               final path = '$userId/$localHikeId/$fileName';
               await supabase.storage.from('hike_photos').upload(path, file);
               final publicUrl = supabase.storage
@@ -704,23 +1186,33 @@ class _MapPageState extends ConsumerState<MapPage>
               return publicUrl;
             }
 
-            return AlertDialog(
-              title: Text(
-                tappedLatLng == null
-                    ? 'Tandai Lokasi (POI)'
-                    : 'Tandai Pilihan Peta',
-              ),
-              content: SingleChildScrollView(
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              backgroundColor: cardColor,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text(
+                      tappedLatLng == null ? 'Tandai Lokasi' : 'Tandai Peta',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     TextField(
                       controller: nameController,
                       autofocus: true,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: 'Contoh: Pos 1, Sumber Air',
                         labelText: 'Nama Lokasi',
-                        border: OutlineInputBorder(),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                       readOnly: _isUploading,
                     ),
@@ -728,9 +1220,11 @@ class _MapPageState extends ConsumerState<MapPage>
                     DropdownButtonFormField<String>(
                       value: selectedCategory,
                       isExpanded: true,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Kategori',
-                        border: OutlineInputBorder(),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                       hint: const Text('Pilih Kategori'),
                       items: categories.entries.map((entry) {
@@ -751,23 +1245,34 @@ class _MapPageState extends ConsumerState<MapPage>
                     TextField(
                       controller: descController,
                       maxLines: 2,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: 'Opsional',
                         labelText: 'Deskripsi',
-                        border: OutlineInputBorder(),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                       readOnly: _isUploading,
                     ),
                     const SizedBox(height: 16),
+                    Text(
+                      'Foto (Opsional)',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     Container(
                       width: double.infinity,
-                      height: 150,
+                      height: 120,
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: textLight.withOpacity(0.3)),
+                        borderRadius: BorderRadius.circular(12),
                         color: _isUploading
-                            ? Colors.grey.shade100
-                            : Colors.white,
+                            ? backgroundColor
+                            : cardColor,
                       ),
                       child: _tempImageFile == null
                           ? InkWell(
@@ -776,13 +1281,14 @@ class _MapPageState extends ConsumerState<MapPage>
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(
-                                    Icons.add_a_photo_outlined,
-                                    color: Colors.grey.shade600,
+                                    Icons.add_photo_alternate_outlined,
+                                    color: textLight,
+                                    size: 32,
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Tambah Foto (Opsional)',
-                                    style: TextStyle(color: Colors.grey[600]),
+                                    'Tambah Foto',
+                                    style: TextStyle(color: textLight),
                                   ),
                                 ],
                               ),
@@ -791,30 +1297,29 @@ class _MapPageState extends ConsumerState<MapPage>
                               fit: StackFit.expand,
                               children: [
                                 ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(12),
                                   child: Image.file(
                                     File(_tempImageFile!.path),
                                     fit: BoxFit.cover,
                                   ),
                                 ),
                                 Positioned(
-                                  top: 4,
-                                  right: 4,
+                                  top: 8,
+                                  right: 8,
                                   child: InkWell(
                                     onTap: _isUploading
                                         ? null
-                                        : () => setDialogState(
-                                            () => _tempImageFile = null,
-                                          ),
+                                        : () => setDialogState(() => _tempImageFile = null),
                                     child: Container(
+                                      padding: const EdgeInsets.all(4),
                                       decoration: BoxDecoration(
                                         color: Colors.black.withOpacity(0.6),
                                         shape: BoxShape.circle,
                                       ),
                                       child: const Icon(
-                                        Icons.close,
+                                        Icons.close_rounded,
                                         color: Colors.white,
-                                        size: 20,
+                                        size: 16,
                                       ),
                                     ),
                                   ),
@@ -822,111 +1327,185 @@ class _MapPageState extends ConsumerState<MapPage>
                               ],
                             ),
                     ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _isUploading
+                                ? null
+                                : () {
+                                    Navigator.of(ctx).pop();
+                                  },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: primaryColor,
+                              side: BorderSide(color: primaryColor),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text('Batal'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _isUploading
+                                ? null
+                                : () async {
+                                    if (nameController.text.trim().isEmpty) {
+                                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                        SnackBar(
+                                          content: const Text('Nama Lokasi wajib diisi'),
+                                          backgroundColor: const Color(0xFFFFC107),
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(12)),
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    setDialogState(() => _isUploading = true);
+                                    try {
+                                      final hikeId = ref
+                                          .read(mapNotifierProvider)
+                                          .currentHikeId;
+                                      if (hikeId == null)
+                                        throw Exception("Hike ID tidak ditemukan");
+
+                                      final HikeWaypoint? newWaypoint = await notifier
+                                          .addWaypoint(
+                                            nameController.text.trim(),
+                                            descController.text.trim().isEmpty
+                                                ? null
+                                                : descController.text.trim(),
+                                            selectedCategory,
+                                            tappedLatLng,
+                                          );
+                                      if (newWaypoint == null)
+                                        throw Exception("Gagal menyimpan waypoint");
+
+                                      if (_tempImageFile != null) {
+                                        final userId = ref
+                                            .read(authStateProvider)
+                                            .value!
+                                            .id;
+                                        final photoDao = ref.read(hikePhotoDaoProvider);
+                                        final photoUrl = await _uploadToStorage(
+                                          _tempImageFile!,
+                                          userId,
+                                          hikeId,
+                                        );
+                                        final photoEntry = HikePhotosCompanion(
+                                          hikeId: d.Value(hikeId),
+                                          waypointId: d.Value(newWaypoint.id),
+                                          photoUrl: d.Value(photoUrl),
+                                          syncStatus: const d.Value(SyncStatus.pending),
+                                        );
+                                        await photoDao.insertHikePhoto(photoEntry);
+                                      }
+                                      if (ctx.mounted) {
+                                        Navigator.of(ctx).pop();
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                'POI "${nameController.text}" disimpan',
+                                              ),
+                                              backgroundColor: primaryColor,
+                                              behavior: SnackBarBehavior.floating,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(12)),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    } catch (e) {
+                                      setDialogState(() => _isUploading = false);
+                                      if (dialogContext.mounted) {
+                                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Error: $e'),
+                                            backgroundColor: accentColor,
+                                            behavior: SnackBarBehavior.floating,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(12)),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: _isUploading
+                                ? SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text('Simpan'),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: _isUploading
-                      ? null
-                      : () {
-                          Navigator.of(ctx).pop();
-                        },
-                  child: const Text('Batal'),
-                ),
-                FilledButton(
-                  onPressed: _isUploading
-                      ? null
-                      : () async {
-                          if (nameController.text.trim().isEmpty) {
-                            ScaffoldMessenger.of(dialogContext).showSnackBar(
-                              const SnackBar(
-                                content: Text('Nama Lokasi wajib diisi'),
-                                backgroundColor: Colors.orange,
-                              ),
-                            );
-                            return;
-                          }
-                          setDialogState(() => _isUploading = true);
-                          try {
-                            final hikeId = ref
-                                .read(mapNotifierProvider)
-                                .currentHikeId;
-                            if (hikeId == null)
-                              throw Exception("Hike ID tidak ditemukan");
-
-                            final HikeWaypoint? newWaypoint = await notifier
-                                .addWaypoint(
-                                  nameController.text.trim(),
-                                  descController.text.trim().isEmpty
-                                      ? null
-                                      : descController.text.trim(),
-                                  selectedCategory,
-                                  tappedLatLng,
-                                );
-                            if (newWaypoint == null)
-                              throw Exception("Gagal menyimpan waypoint");
-
-                            if (_tempImageFile != null) {
-                              final userId = ref
-                                  .read(authStateProvider)
-                                  .value!
-                                  .id;
-                              final photoDao = ref.read(hikePhotoDaoProvider);
-                              final photoUrl = await _uploadToStorage(
-                                _tempImageFile!,
-                                userId,
-                                hikeId,
-                              );
-                              final photoEntry = HikePhotosCompanion(
-                                hikeId: d.Value(hikeId),
-                                waypointId: d.Value(newWaypoint.id),
-                                photoUrl: d.Value(photoUrl),
-                                syncStatus: const d.Value(SyncStatus.pending),
-                              );
-                              await photoDao.insertHikePhoto(photoEntry);
-                            }
-                            if (ctx.mounted) {
-                              Navigator.of(ctx).pop();
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'POI "${nameController.text}" disimpan',
-                                    ),
-                                    duration: const Duration(seconds: 2),
-                                  ),
-                                );
-                              }
-                            }
-                          } catch (e) {
-                            setDialogState(() => _isUploading = false);
-                            if (dialogContext.mounted) {
-                              ScaffoldMessenger.of(dialogContext).showSnackBar(
-                                SnackBar(
-                                  content: Text('Error: $e'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                            }
-                          }
-                        },
-                  child: _isUploading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('Simpan'),
-                ),
-              ],
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildImageSourceOption({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: primaryColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, color: primaryColor, size: 24),
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: textPrimary,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(
+          fontSize: 14,
+          color: textSecondary,
+        ),
+      ),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        color: textLight,
+        size: 20,
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+      onTap: onTap,
     );
   }
 
@@ -943,32 +1522,5 @@ class _MapPageState extends ConsumerState<MapPage>
       default:
         return Icons.location_pin;
     }
-  }
-
-  void _showExitConfirmationDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Batalkan Tracking?'),
-          content: const Text(
-            'Anda masih melakukan tracking. Apakah Anda yakin ingin membatalkan?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Lanjutkan Tracking'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                context.go('/home');
-              },
-              child: const Text('Keluar', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
-    );
   }
 }

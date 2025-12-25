@@ -134,4 +134,21 @@ extension HikeUpdate on HikeDao {
     // menghapus semua RoutePoints, Waypoints, dan Photos yang terkait.
     return (delete(hikes)..where((tbl) => tbl.id.equals(id))).go();
   }
+  // Update durasi dan status 
+  Future<void> updateDurationAndStatus(int id, int seconds, SyncStatus status) {
+    return (update(hikes)..where((tbl) => tbl.id.equals(id))).write(
+      HikesCompanion(
+        durationSeconds: Value(seconds),
+        syncStatus: Value(status), // Kita juga perlu update status
+      ),
+    );
+  }
+  // Update durasi live ketika tracking berjalan
+  Future<void> updateLiveDuration(int id, int durationSeconds) {
+  return (update(hikes)
+        ..where((tbl) => tbl.id.equals(id))
+      ).write(HikesCompanion(
+        durationSeconds: Value(durationSeconds),
+      ));
+}
 }

@@ -49,6 +49,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- ========================================
+             FOREGROUND SERVICE UNTUK BACKGROUND LOCATION
+             ======================================== -->
+        <service
+         android:name="com.baseflow.geolocator.GeolocatorLocationService"
+         android:exported="false"
+         android:foregroundServiceType="location" />
+
+         <service
+         android:name="id.flutter.flutter_background_service.BackgroundService"
+         android:foregroundServiceType="location" />
 
         <!-- ========================================
              FOREGROUND SERVICE UNTUK GPS

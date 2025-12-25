@@ -6,17 +6,26 @@ environment:
   sdk: '>=3.9.0 <4.0.0'
 
 dependencies:
+  cached_network_image: ^3.4.1
   connectivity_plus: ^7.0.0
   cupertino_icons: ^1.0.8
+  dio: ^5.9.0
   drift: ^2.20.1
   drift_flutter: ^0.2.7
   equatable: ^2.0.5
   exif: ^3.3.0
   flutter:
     sdk: flutter
+  flutter_background_service: ^5.1.0
+  flutter_background_service_android: ^6.3.1
   flutter_compass: ^0.8.1
   flutter_dotenv: ^6.0.0
+  flutter_local_notifications: ^19.5.0
   flutter_map: ^8.2.2
+  flutter_map_cache: ^2.0.0
+  freezed_annotation: ^2.4.1
+  json_annotation: ^4.9.0
+  
   flutter_riverpod: ^2.5.1
   geolocator: ^14.0.2
   geolocator_android: ^5.0.2
@@ -24,36 +33,47 @@ dependencies:
   go_router: ^16.3.0
   google_sign_in: ^7.2.0
   http: ^1.2.2
+  http_cache_file_store: ^2.0.1
   image_picker: ^1.2.0
   intl: ^0.20.2
   latlong2: ^0.9.1
   logger: ^2.6.2
+  objectbox: ^4.3.1
+  objectbox_flutter_libs: ^4.3.1
   path: ^1.9.0
   path_provider: ^2.1.5
+  permission_handler: ^12.0.1
   photo_view: ^0.15.0
   riverpod_annotation: ^2.3.5
   shared_preferences: ^2.5.3
   sqlite3_flutter_libs: ^0.5.24
   supabase_flutter: ^2.10.3
-
+  package_info_plus: ^8.0.0
+  url_launcher: ^6.3.1
+  fl_chart: ^1.1.1
+  liquid_swipe: ^3.1.0
+  lottie: ^3.1.2
 dev_dependencies:
 
   # Code generation tools
+  freezed: ^2.5.2
   build_runner: ^2.4.9
   copy_with_extension_gen: ^6.0.1
   drift_dev: ^2.20.1
 
+  flutter_launcher_icons: ^0.14.4
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
   json_serializable: ^6.8.0
   riverpod_generator: ^2.3.5
-
+  flutter_native_splash: ^2.4.0
 flutter:
   uses-material-design: true
-
   assets:
     - .env
+    - assets/splash_logo.png
+    - assets/lottie/
 
   fonts:
     - family: Inter
@@ -62,3 +82,20 @@ flutter:
         - asset: assets/fonts/Inter-Medium.ttf
         - asset: assets/fonts/Inter-Bold.ttf
           weight: 700
+
+flutter_native_splash:
+  # Warna background splash screen kamu
+  color: "#FFFFFF" # (Warna putih)
+  
+  # Path ke logo kamu
+  image: assets/splash_logo.png
+
+  # (Opsional) Jika kamu mau logo tetap kecil di tengah
+  # android_gravity: center
+  # ios_content_mode: center
+
+  # Atur untuk Android 12+ (ini penting)
+  android_12:
+    color: "#FFFFFF"
+    image: assets/splash_logo.png
+

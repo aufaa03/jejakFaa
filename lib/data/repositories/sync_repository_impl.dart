@@ -5,8 +5,10 @@ import 'package:jejak_faa_new/data/local_db/daos/hike_photo_dao.dart';
 import 'package:jejak_faa_new/data/local_db/daos/hike_waypoint_dao.dart';
 import 'package:jejak_faa_new/data/local_db/daos/route_point_dao.dart';
 // --- AKHIR TAMBAHAN ---
+import 'package:jejak_faa_new/core/services/weather_service.dart';
 import 'package:jejak_faa_new/data/local_db/database.dart';
 import 'package:jejak_faa_new/domain/repositories/sync_repository.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:jejak_faa_new/data/models/sync_status.dart';
 
@@ -19,7 +21,7 @@ class SyncRepositoryImpl implements SyncRepository {
   final RoutePointDao _routePointDao;
   // --- AKHIR TAMBAHAN ---
   final SupabaseClient _supabase;
-
+  final WeatherService _weatherService; 
   // --- PERUBAHAN KONSTRUKTOR (cocok dengan database_providers.dart) ---
   SyncRepositoryImpl(
     this._hikeDao,
@@ -27,6 +29,7 @@ class SyncRepositoryImpl implements SyncRepository {
     this._hikeWaypointDao, // Tambahan
     this._routePointDao, // Tambahan
     this._supabase,
+    this._weatherService, // Tambahan
   );
   // --- AKHIR PERUBAHAN ---
 
