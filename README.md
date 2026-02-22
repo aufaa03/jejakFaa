@@ -97,7 +97,7 @@ Pemisahan ini membuat *state* terisolasi dan logika sinkronisasi data dapat diuj
 
 1.  **Clone repositori:**
     ```bash
-    git clone [https://github.com/USERNAME_ANDA/jejakFaa.git](https://github.com/USERNAME_ANDA/jejakFaa.git)
+    git clone [https://github.com/aufaa03/jejakFaa.git](https://github.com/USERNAME_ANDA/jejakFaa.git)
     cd jejakFaa
     ```
 
@@ -108,7 +108,7 @@ Pemisahan ini membuat *state* terisolasi dan logika sinkronisasi data dapat diuj
 
 3.  **Setup Supabase:**
     * Buat proyek baru di [Supabase](https://supabase.io).
-    * Gunakan [skrip SQL](https://github.com/USERNAME_ANDA/jejakFaa/issues/1) *(Anda bisa buatkan Issue untuk menaruh SQL skema)* untuk membuat tabel `hikes`, `hike_photos`, `hike_waypoints`, dan `route_points`.
+    * Gunakan [skrip SQL](https://github.com/aufaa03/jejakFaa/issues/1) *(Anda bisa buatkan Issue untuk menaruh SQL skema)* untuk membuat tabel `hikes`, `hike_photos`, `hike_waypoints`, dan `route_points`.
     * Nyalakan RLS (Row Level Security) untuk semua tabel.
     * Siapkan file `.env` Anda (atau `app_config.dart`) dengan **URL** dan **Anon Key** Supabase Anda.
 
