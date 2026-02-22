@@ -32,9 +32,9 @@ Fokus utama proyek ini adalah fungsionalitas **offline-first** yang kuat. Pelaca
 
 | Beranda | Halaman Peta (Tracking) |
 | :---: | :---: |
-| *[Sisipkan tangkapan layar Beranda di sini]* | *[Sisipkan tangkapan layar Peta di sini]* |
-| **Halaman Detail Jejak** | **Modal Detail Waypoint** |
-| *[Sisipkan tangkapan layar Halaman Detail di sini]* | *[Sisipkan tangkapan layar modal POI di sini]* |
+| <img src="https://github.com/user-attachments/assets/7b4e5a7d-2d98-417e-a04e-55985412b086" width="250"> | <img src="https://github.com/user-attachments/assets/108b688a-7d75-422b-9c55-f8ce8bbe65a8" width="250"> |
+| **Halaman Detail Jejak** | **Halaman Prediksi Cuaca** |
+| <img src="https://github.com/user-attachments/assets/7a302198-8bc0-4e20-9ac3-8638685af910" width="250"> | <img src="https://github.com/user-attachments/assets/9e86b719-f9ff-4882-9a61-66e1bf3e184c" width="250"> |
 
 ---
 
